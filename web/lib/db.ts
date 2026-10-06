@@ -37,10 +37,20 @@ function createPool() {
   return pool;
 }
 
-export const pool = globalForPool.pgPool ?? createPool();
-if (process.env.NODE_ENV !== "production") globalForPool.pgPool = pool;
+export function getPool() {
+  if (!globalForPool.pgPool) {
+    globalForPool.pgPool = createPool();
+  }
+  return globalForPool.pgPool;
+}
+
+if (process.env.NODE_ENV !== "production") {
+  // Eagerly create pool in dev so connection errors surface early.
+  globalForPool.pgPool = globalForPool.pgPool ?? createPool();
+}
 
 export async function sql<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+  const pool = getPool();
   const res = await pool.query(text, params);
   return res.rows as T[];
 }
