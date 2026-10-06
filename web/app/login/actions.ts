@@ -1,7 +1,6 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { createSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/session";
 import { checkCredentials, loginConfigured } from "@/lib/users";
 
@@ -11,7 +10,7 @@ function safeNext(next: FormDataEntryValue | null): string {
   return n.startsWith("/") && !n.startsWith("//") && !n.startsWith("/\\") ? n : "/";
 }
 
-export async function login(_: string | null, form: FormData): Promise<string | null> {
+export async function login(_: string | null, form: FormData): Promise<string | null | { redirect: string }> {
   const username = String(form.get("username") ?? "");
   const password = String(form.get("password") ?? "");
   if (!loginConfigured()) {
@@ -30,7 +29,7 @@ export async function login(_: string | null, form: FormData): Promise<string | 
       path: "/",
       maxAge: SESSION_TTL_SECONDS,
     });
-    redirect(safeNext(form.get("next")));
+    return { redirect: safeNext(form.get("next")) };
   } catch (err: any) {
     // Surface a friendly error instead of letting a runtime exception propagate to the platform.
     console.error("Login error:", err && err.stack ? err.stack : err);
