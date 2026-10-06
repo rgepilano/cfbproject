@@ -17,18 +17,29 @@ export async function login(_: string | null, form: FormData): Promise<string | 
   if (!loginConfigured()) {
     return "Login is not configured on the server.";
   }
-  if (!(await checkCredentials(username, password))) {
-    await new Promise((r) => setTimeout(r, 750));
-    return "Invalid username or password.";
+  try {
+    if (!(await checkCredentials(username, password))) {
+      await new Promise((r) => setTimeout(r, 750));
+      return "Invalid username or password.";
+    }
+    const token = await createSession(username);
+    (await cookies()).set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_TTL_SECONDS,
+    });
+    redirect(safeNext(form.get("next")));
+  } catch (err: any) {
+    // Surface a friendly error instead of letting a runtime exception propagate to the platform.
+    console.error("Login error:", err && err.stack ? err.stack : err);
+    // If it's an AUTH_SECRET problem, return a clear message for operators.
+    if (typeof err?.message === "string" && err.message.includes("AUTH_SECRET")) {
+      return "Server misconfiguration: AUTH_SECRET invalid or missing. Set a 32+ char AUTH_SECRET in environment variables.";
+    }
+    return "Internal server error during login. Check server logs.";
   }
-  (await cookies()).set(SESSION_COOKIE, await createSession(username), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_TTL_SECONDS,
-  });
-  redirect(safeNext(form.get("next")));
 }
 
 export async function logout() {
