@@ -3,12 +3,22 @@ import { PortalBoard } from "@/components/PortalBoard";
 import { getTeams } from "@/lib/db";
 import { getPortalBoard } from "@/lib/portal";
 import { DEFAULT_TEAM, param, POSITION_GROUPS, type SearchParams } from "@/lib/util";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
+import { getUserDefaultTeam } from "@/lib/users";
 
 export default async function PortalPage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
   const teams = await getTeams();
   const requested = param(sp, "team");
-  const team = requested && teams.includes(requested) ? requested : DEFAULT_TEAM;
+  const c = (await cookies()).get(SESSION_COOKIE)?.value;
+  const username = await getSessionUsername(c);
+  const userTeam = username ? getUserDefaultTeam(username) : null;
+  const team = requested && teams.includes(requested)
+    ? requested
+    : userTeam
+    ? teams.find((t) => t.toLowerCase() === userTeam.toLowerCase()) ?? DEFAULT_TEAM
+    : DEFAULT_TEAM;
   const { candidates, hasLocation } = await getPortalBoard(team);
 
   return (

@@ -3,6 +3,9 @@ import { ParamSelect } from "@/components/ParamSelect";
 import { Bar, Card, Table, Td, Th } from "@/components/ui";
 import { getTeams, sql } from "@/lib/db";
 import { DEFAULT_TEAM, num, param, pick, qs, type SearchParams } from "@/lib/util";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
+import { getUserDefaultTeam } from "@/lib/users";
 
 type Row = {
   pos_group: string; season: number; current_players: number; expected_returning: number;
@@ -14,7 +17,14 @@ export default async function PipelinePage({ searchParams }: { searchParams: Sea
   const sp = await searchParams;
   const teams = await getTeams();
   const requested = param(sp, "team");
-  const team = requested && teams.includes(requested) ? requested : DEFAULT_TEAM;
+  const c = (await cookies()).get(SESSION_COOKIE)?.value;
+  const username = await getSessionUsername(c);
+  const userTeam = username ? getUserDefaultTeam(username) : null;
+  const team = requested && teams.includes(requested)
+    ? requested
+    : userTeam
+    ? teams.find((t) => t.toLowerCase() === userTeam.toLowerCase()) ?? DEFAULT_TEAM
+    : DEFAULT_TEAM;
   const horizon = pick(param(sp, "h"), ["1", "2", "3"] as const, "1");
 
   const rows = await sql<Row>(

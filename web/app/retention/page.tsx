@@ -3,6 +3,9 @@ import { Badge, Card, PlayerLink, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
 import { getTeams, sql } from "@/lib/db";
 import { DEFAULT_TEAM, name, num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
+import { getUserDefaultTeam } from "@/lib/users";
 
 const SORTS = {
   priority: "retention_priority DESC NULLS LAST",
@@ -19,7 +22,14 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
   const sp = await searchParams;
   const teams = await getTeams();
   const requested = param(sp, "team");
-  const team = requested && teams.includes(requested) ? requested : DEFAULT_TEAM;
+  const c = (await cookies()).get(SESSION_COOKIE)?.value;
+  const username = await getSessionUsername(c);
+  const userTeam = username ? getUserDefaultTeam(username) : null;
+  const team = requested && teams.includes(requested)
+    ? requested
+    : userTeam
+    ? teams.find((t) => t.toLowerCase() === userTeam.toLowerCase()) ?? DEFAULT_TEAM
+    : DEFAULT_TEAM;
   const g = param(sp, "group");
   const group = g && POSITION_GROUPS.includes(g) ? g : undefined;
   const sort = pick(param(sp, "sort"), Object.keys(SORTS) as SortKey[], "priority");

@@ -4,6 +4,9 @@ import { Badge, Bar, Card, Empty, PlayerLink, Table, Td, Th } from "@/components
 import { getTeams, sql } from "@/lib/db";
 import { getPortalBoard } from "@/lib/portal";
 import { DEFAULT_TEAM, name, num, param, pct, type SearchParams } from "@/lib/util";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
+import { getUserDefaultTeam } from "@/lib/users";
 
 type Need = { pos_group: string; need_score: number; player_gap: number; projected_players: number; target_players: number };
 type Row = Record<string, string | number | null>;
@@ -12,7 +15,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
   const sp = await searchParams;
   const teams = await getTeams();
   const requested = param(sp, "team");
-  const team = requested && teams.includes(requested) ? requested : DEFAULT_TEAM;
+  const c = (await cookies()).get(SESSION_COOKIE)?.value;
+  const username = await getSessionUsername(c);
+  const userTeam = username ? getUserDefaultTeam(username) : null;
+  const team = requested && teams.includes(requested)
+    ? requested
+    : userTeam
+    ? teams.find((t) => t.toLowerCase() === userTeam.toLowerCase()) ?? DEFAULT_TEAM
+    : DEFAULT_TEAM;
   const q = `?team=${encodeURIComponent(team)}`;
 
   const [needs, retain, commits, portal] = await Promise.all([
