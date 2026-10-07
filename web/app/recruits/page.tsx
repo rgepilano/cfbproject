@@ -4,6 +4,9 @@ import { Badge, Card, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
 import { sql } from "@/lib/db";
 import { num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
+import { getUserDefaultTeam } from "@/lib/users";
 
 const PAGE_SIZE = 50;
 const SORTS = {
@@ -24,14 +27,33 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
   const t = param(sp, "tier");
   const tier = t && TIERS.includes(t) ? t : undefined;
   const state = param(sp, "state")?.slice(0, 3);
-  const committed = param(sp, "committed")?.slice(0, 80);
+  const requestedCommitted = param(sp, "committed")?.slice(0, 80);
+
+  const c = (await cookies()).get(SESSION_COOKIE)?.value;
+  const username = await getSessionUsername(c);
+  const userTeam = username ? getUserDefaultTeam(username) : null;
   const sort = pick(param(sp, "sort"), Object.keys(SORTS) as SortKey[], "success");
   const page = Math.max(1, Number(param(sp, "page") ?? 1) || 1);
+
+  // Fetch available committed schools first so we can default the dropdown to the user's default team
+  const schools = await sql<{ committed_to: string }>(
+    "SELECT DISTINCT committed_to FROM analytics.recruit_projection WHERE committed_to IS NOT NULL ORDER BY 1",
+  );
+  const schoolOptions = schools.map((s) => s.committed_to);
+
+  // Decide which committed value to use: explicit param -> user's default team -> null
+  let committed: string | null = null;
+  if (requestedCommitted && schoolOptions.includes(requestedCommitted)) committed = requestedCommitted;
+  else if (userTeam) {
+    const match = schoolOptions.find((s) => s.toLowerCase() === userTeam.toLowerCase());
+    if (match) committed = match;
+  }
 
   const where = `($1::text IS NULL OR pos_group = $1) AND ($2::text IS NULL OR tier = $2)
                  AND ($3::text IS NULL OR state = $3) AND ($4::text IS NULL OR committed_to = $4)`;
   const args = [group ?? null, tier ?? null, state ?? null, committed ?? null];
-  const [rows, count, states, schools, meta] = await Promise.all([
+
+  const [rows, count, states, meta] = await Promise.all([
     sql<Row>(
       `SELECT recruit_id, name, position, pos_group, high_school, city, state, committed_to, stars, rating, ranking,
               height, weight, success_score, tier, position_rank, p_contributor, p_impact, p_drafted, basis, comparables
@@ -41,12 +63,10 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
     ),
     sql<{ n: string }>(`SELECT count(*) AS n FROM analytics.recruit_projection WHERE ${where}`, args),
     sql<{ state: string }>("SELECT DISTINCT state FROM analytics.recruit_projection WHERE state IS NOT NULL ORDER BY 1"),
-    sql<{ committed_to: string }>(
-      "SELECT DISTINCT committed_to FROM analytics.recruit_projection WHERE committed_to IS NOT NULL ORDER BY 1"),
     sql<{ class_year: string }>("SELECT max(class_year) AS class_year FROM analytics.recruit_projection"),
   ]);
   const total = Number(count[0]?.n ?? 0);
-  const base = { group, tier, state, committed, sort };
+  const base = { group, tier, state, committed: committed ?? undefined, sort };
 
   return (
     <>
@@ -65,7 +85,7 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
         <ParamSelect name="group" value={group} options={POSITION_GROUPS} label="Group" allLabel="All" />
         <ParamSelect name="tier" value={tier} options={TIERS} label="Tier" allLabel="All" />
         <ParamSelect name="state" value={state} options={states.map((s) => s.state)} label="State" allLabel="All" />
-        <ParamSelect name="committed" value={committed} options={schools.map((s) => s.committed_to)} label="Committed" allLabel="All" />
+        <ParamSelect name="committed" value={committed ?? ""} options={schoolOptions} label="Committed" allLabel="All" />
       </div>
 
       <Card title={`${total} recruits`}>
