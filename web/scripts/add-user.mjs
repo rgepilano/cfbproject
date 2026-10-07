@@ -1,5 +1,5 @@
 // Add, update, remove, or list app logins stored as scrypt hashes in .env.local (APP_USERS).
-// Usage: npm run add-user -- <username>     (prompts for password)
+// Usage: npm run add-user -- <username> [--team <teamId>] (prompts for password)
 //        npm run add-user -- --remove <username>
 //        npm run add-user -- --list
 import { randomBytes, scryptSync } from "node:crypto";
@@ -58,6 +58,11 @@ if (args[0] === "--list") {
     console.log(`Removed ${name}. Restart the app to apply.`);
   }
 } else if (args[0] && !args[0].startsWith("--")) {
+  // optional: --team <teamId>
+  let team = null;
+  const teamIndex = args.indexOf("--team");
+  if (teamIndex >= 0 && args[teamIndex + 1]) team = args[teamIndex + 1];
+
   const name = args[0].toLowerCase();
   if (!/^[a-z0-9._-]{2,40}$/.test(name)) {
     console.error("Username: 2-40 chars, letters/digits/._- only");
@@ -74,7 +79,8 @@ if (args[0] === "--list") {
   }
   const salt = randomBytes(16);
   const hash = scryptSync(pw, salt, 64);
-  users.set(name, `${name}:${salt.toString("hex")}:${hash.toString("hex")}`);
+  const entry = team ? `${name}:${salt.toString("hex")}:${hash.toString("hex")}:${team}` : `${name}:${salt.toString("hex")}:${hash.toString("hex")}`;
+  users.set(name, entry);
   saveUsers(text, users);
   console.log(`Saved ${name}. Restart the app to apply.`);
 } else {

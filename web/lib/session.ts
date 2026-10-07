@@ -36,3 +36,22 @@ export async function verifySession(token: string | undefined): Promise<boolean>
     return false;
   }
 }
+
+export async function getSessionUsername(token: string | undefined): Promise<string | null> {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [user, exp, sig] = parts;
+  if (!/^\d+$/.test(exp) || Number(exp) < Date.now() / 1000) return null;
+  try {
+    const ok = safeEqual(sig, await hmac(`${user}.${exp}`));
+    if (!ok) return null;
+    try {
+      return decodeURIComponent(user);
+    } catch {
+      return user;
+    }
+  } catch {
+    return null;
+  }
+}

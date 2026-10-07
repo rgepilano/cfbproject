@@ -7,14 +7,19 @@ const KEY_LEN = 64;
 // Used for unknown usernames so response time doesn't reveal which accounts exist.
 const DUMMY = { salt: randomBytes(16), hash: randomBytes(KEY_LEN) };
 
-type Entry = { salt: Buffer; hash: Buffer };
+type Entry = { salt: Buffer; hash: Buffer; team?: string };
 
-/** APP_USERS format: "user1:saltHex:hashHex,user2:saltHex:hashHex" (create with `npm run add-user`). */
+/**
+ * APP_USERS format (extended):
+ * "user1:saltHex:hashHex[:defaultTeam],user2:..."
+ * The optional 4th field is a default team id or code assigned to the user.
+ */
 function users(): Map<string, Entry> {
   const map = new Map<string, Entry>();
   for (const item of (process.env.APP_USERS ?? "").split(",")) {
-    const [name, salt, hash] = item.trim().split(":");
-    if (name && salt && hash) map.set(name.toLowerCase(), { salt: Buffer.from(salt, "hex"), hash: Buffer.from(hash, "hex") });
+    const parts = item.trim().split(":");
+    const [name, salt, hash, team] = parts;
+    if (name && salt && hash) map.set(name.toLowerCase(), { salt: Buffer.from(salt, "hex"), hash: Buffer.from(hash, "hex"), team: team || undefined });
   }
   return map;
 }
@@ -35,4 +40,13 @@ export async function checkCredentials(username: string, password: string): Prom
   if (!u || !p) return false;
   const digest = (s: string) => createHash("sha256").update(s).digest();
   return timingSafeEqual(digest(username), digest(u)) && timingSafeEqual(digest(password), digest(p));
+}
+
+export function getUserDefaultTeam(username: string): string | null {
+  const entry = users().get(username.toLowerCase());
+  return entry?.team ?? null;
+}
+
+export function listUsers(): string[] {
+  return [...users().keys()];
 }
