@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ParamSelect } from "@/components/ParamSelect";
 import { Badge, Bar, Card, Empty, PlayerLink, Table, Td, Th } from "@/components/ui";
-import { getTeams, sql } from "@/lib/db";
+import { getTeams, sql, getTeamNIL } from "@/lib/db";
 import { getPortalBoard } from "@/lib/portal";
 import { DEFAULT_TEAM, name, num, param, pct, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
@@ -45,11 +45,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
     ),
     getPortalBoard(team),
   ]);
+  const nilVal = await getTeamNIL(team);
 
   return (
     <>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{team} — Roster Outlook</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{team} — Roster Outlook</h1>
+          <div className="text-sm text-slate-600">Estimated NIL (2026): {nilVal ? `$${nilVal.toFixed(2)}M` : "—"}</div>
+        </div>
         <ParamSelect name="team" value={team} options={teams} label="Team" />
       </div>
 

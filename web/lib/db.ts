@@ -64,3 +64,77 @@ export async function getTeams(): Promise<string[]> {
   const rows = await sql<{ team: string }>("SELECT DISTINCT team FROM analytics.departure_risk ORDER BY team");
   return rows.map((r) => r.team);
 }
+
+let _nilMap: Record<string, number> | null = null;
+export async function getNILMap(): Promise<Record<string, number>> {
+  if (_nilMap) return _nilMap;
+  const p = require("node:path");
+  const fs = require("node:fs");
+  const f = p.join(process.cwd(), "web", "data", "sideline-nil-2026.csv");
+  const out: Record<string, number> = {};
+  if (!fs.existsSync(f)) {
+    _nilMap = out;
+    return out;
+  }
+  const text = fs.readFileSync(f, "utf8");
+  const lines = text.split(/\r?\n/);
+  // Find header line and parse CSV rows (simple CSV parser handling quoted fields)
+  for (const line of lines) {
+    if (!line || line.startsWith("#")) continue;
+    const m = line.match(/(?:"([^"]*)")|([^,]+)/g);
+    if (!m) continue;
+    // fields: Rank, School, Conference, Tier, Value
+    const fields = (m as string[]).map((s: string) => s.replace(/^"|"$/g, "").trim());
+    if (fields.length < 5) continue;
+    const school = fields[1];
+    const value = Number(fields[4]);
+    if (!Number.isNaN(value)) out[school.trim().toLowerCase()] = value;
+  }
+  _nilMap = out;
+  return out;
+}
+
+export async function getTeamNIL(team: string, season = 2026): Promise<number | null> {
+  if (!team) return null;
+  // First, try to read from analytics.team_season.nil_amt for the requested season if available.
+  try {
+    const rows = await sql<{ nil_amt: number }>(
+      `SELECT nil_amt FROM analytics.team_season WHERE lower(team) = lower($1) AND season = $2 LIMIT 1`,
+      [team, season],
+    );
+    const v = rows[0]?.nil_amt;
+    if (v !== undefined && v !== null) return Number(v);
+  } catch (e) {
+    // If the query fails (table missing or permission), fall back to CSV.
+  }
+
+  // Fallback: use CSV-based map (legacy). Keep previous normalization heuristics.
+  const map = await getNILMap();
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, "") // remove parentheticals
+      .replace(/["'.,]/g, "")
+      .replace(/&/g, "and")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const key = team.trim().toLowerCase();
+  if (map[key] != null) return map[key];
+
+  const variants = [team, team.replace(/\s*\([^)]*\)\s*/g, "")].map((v) => normalize(v));
+  for (const v of variants) {
+    if (map[v] != null) return map[v];
+  }
+
+  // Try approximate contains match against normalized map keys
+  const normalizedMap: Record<string, number> = {};
+  for (const [k, val] of Object.entries(map)) normalizedMap[normalize(k)] = val;
+  for (const v of variants) {
+    for (const [mk, mv] of Object.entries(normalizedMap)) {
+      if (mk.includes(v) || v.includes(mk)) return mv;
+    }
+  }
+
+  return null;
+}

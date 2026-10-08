@@ -1,7 +1,7 @@
 import { ParamSelect } from "@/components/ParamSelect";
 import { Badge, Card, PlayerLink, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
-import { getTeams, sql } from "@/lib/db";
+import { getTeams, sql, getTeamNIL } from "@/lib/db";
 import { DEFAULT_TEAM, name, num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
@@ -48,12 +48,14 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
   const highRisk = rows.filter((r) => r.transfer_tier === "High").length;
   const nflHigh = rows.filter((r) => r.nfl_tier === "High" || r.nfl_tier === "Medium").length;
   const graduating = rows.filter((r) => Number(r.graduating) === 1).length;
+  const nilVal = await getTeamNIL(team);
 
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Retention — {team}</h1>
+          <div className="text-sm text-slate-600">Estimated NIL (2026): {nilVal ? `$${nilVal.toFixed(2)}M` : "—"}</div>
           <p className="text-sm text-slate-500">
             {highRisk} high transfer risk · {nflHigh} medium/high NFL early-entry risk · {graduating} out of eligibility.
             Retention priority = player value × position importance × transfer probability × scarcity.

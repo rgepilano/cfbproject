@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ParamSelect } from "@/components/ParamSelect";
 import { Bar, Card, Table, Td, Th } from "@/components/ui";
-import { getTeams, sql } from "@/lib/db";
+import { getTeams, sql, getTeamNIL } from "@/lib/db";
 import { DEFAULT_TEAM, num, param, pick, qs, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
@@ -32,12 +32,14 @@ export default async function PipelinePage({ searchParams }: { searchParams: Sea
     [team, Number(horizon)],
   );
   const season = rows[0]?.season;
+  const nilVal = await getTeamNIL(team);
 
   return (
     <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Roster Pipeline — {team}</h1>
+          <div className="text-sm text-slate-600">Estimated NIL (2026): {nilVal ? `$${nilVal.toFixed(2)}M` : "—"}</div>
           <p className="text-sm text-slate-500">
             Expected roster by position for {season ?? "—"}: returning players weighted by (1 − departure probability),
             plus committed recruits. Targets are the FBS median headcount and 75th-percentile room value.
