@@ -81,7 +81,7 @@ export default async function ModelsPage() {
         <Card title="NFL early-entry risk">
           {nfl["validation"] ? <MetricTable data={nfl["validation"]} /> : null}
           <p className="text-sm text-slate-500">
-            Mode: {nfl["mode"]} · expected early entrants next draft: {nfl["expected_early_entrants"]} · tiers {JSON.stringify(nfl["tier_counts"])}}
+            Mode: {nfl["mode"]} · expected early entrants next draft: {nfl["expected_early_entrants"]} · tiers {JSON.stringify(nfl["tier_counts"]) }
           </p>
           <div className="mt-3 text-xs text-slate-600">
             <strong>Details:</strong> This model estimates the likelihood a player will
