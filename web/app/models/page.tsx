@@ -105,6 +105,44 @@ export default async function ModelsPage() {
             - <em>Tier_counts</em> show how many athletes fall into each risk bucket.
             - Small probabilities can still imply meaningful differences when comparing players.
           </div>
+          <div className="mt-3 text-xs text-slate-600">
+            <strong>Expanded information</strong>
+
+            <strong className="block mt-2">What inputs feed the model</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Roster history (games played, starts, minutes, position depth).</li>
+              <li>Recent playing-time trends and role changes (loss of snaps, benching).</li>
+              <li>Contract/eligibility signals, coaching changes, and roster churn.</li>
+              <li>Injury history, disciplinary events, and transfer-related communications when available.</li>
+            </ul>
+
+            <strong className="block mt-2">How to read the outputs</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>The model score is a probability-like value: higher means more likely to transfer.</li>
+              <li>We also present tiered buckets to convert continuous scores into actionable groups
+                  (e.g., high/medium/low risk) for operational planning.</li>
+              <li>Compare scores within the same release — absolute numbers depend on training labels and definitions.</li>
+            </ul>
+
+            <strong className="block mt-2">Operational uses and examples</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Prioritize retention outreach: focus advising and retention budgets on the top risk tier.</li>
+              <li>Staffing & succession planning: anticipate roster changes and recruit accordingly.</li>
+              <li>Timing interventions: target players when risk starts rising rather than waiting until the portal window opens.</li>
+            </ul>
+
+            <strong className="block mt-2">Limitations and cautions</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Probabilistic, not deterministic — a high score is not a guarantee a player will transfer.</li>
+              <li>Model can miss rapid off-field changes (e.g., sudden family/academic issues) not present in historical data.</li>
+              <li>Potential biases: model reflects historical patterns in who had opportunities to transfer.</li>
+              <li>Calibration should be checked periodically; if predictions drift, scores may mislead operational decisions.</li>
+            </ul>
+
+            <strong className="block mt-2">Quick example interpretation</strong>
+            <p className="mt-1">If the baseline transfer rate is 8% and the top tier has a 40% realized transfer rate,
+            the model provides 5× enrichment — useful for concentrating outreach and retention effort.</p>
+          </div>
         </Card>
       )}
       {nfl && (
@@ -114,20 +152,41 @@ export default async function ModelsPage() {
             Mode: {nfl["mode"]} · expected early entrants next draft: {nfl["expected_early_entrants"]} · tiers {JSON.stringify(nfl["tier_counts"]) }
           </p>
           <div className="mt-3 text-xs text-slate-600">
-            <strong>Details (plain language):</strong> This model predicts the chance a
-            college player will declare early for the NFL draft. In simple terms, the model
-            ranks players by how likely they are to enter the draft early and gives an
-            estimated probability for each player.
+            <strong>Expanded information</strong>
 
-            <strong className="block mt-2">What this means for staff</strong>
-            - Use the ranking to focus conversations with players and prepare draft
-              readiness resources for those most likely to declare.
-            - The <em>expected_early_entrants</em> number is an aggregate forecast and should
-              be used alongside scouting reports and agent intelligence.
+            <strong className="block mt-2">What inputs feed the model</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Player performance metrics (game stats, efficiency metrics, awards).</li>
+              <li>Physical and combine-style indicators when available (size, speed, explosiveness).</li>
+              <li>Scouting and exposure signals (major camp invites, media coverage, consensus rankings).</li>
+              <li>Career trajectory and opportunity (starter vs. rotational player, positional demand in the draft).</li>
+            </ul>
 
-            <strong className="block mt-2">Technical note</strong>
-            - The model is intended to inform planning and resource allocation, not replace
-              case-by-case evaluation.
+            <strong className="block mt-2">How to read the outputs</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Individual score = model's estimated probability a player will declare early.</li>
+              <li><em>Expected_early_entrants</em> aggregates individual probabilities to estimate the total number of early declarers.</li>
+              <li>Mode indicates whether the model run focused on ranking quality or calibrated probabilities; it affects how you interpret scores.</li>
+            </ul>
+
+            <strong className="block mt-2">Operational uses and examples</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Scouting and draft preparation: prioritize players likely to leave so pro-scouting resources are focused appropriately.</li>
+              <li>Player advising: flag likely declarers for conversations about draft readiness, medical clearances, and agent contacts.</li>
+              <li>Roster planning: estimate incoming vacancies and plan recruiting or transfer targets accordingly.</li>
+            </ul>
+
+            <strong className="block mt-2">Limitations and cautions</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Agent behavior, sudden draft stock changes, injury, or personal decisions can rapidly change outcomes.</li>
+              <li>Model is trained on historical patterns; structural changes in the draft process can reduce accuracy until retrained.</li>
+              <li>Should be used with scouting intelligence and context — not as sole decision-maker.</li>
+            </ul>
+
+            <strong className="block mt-2">Quick example interpretation</strong>
+            <p className="mt-1">If the model assigns a 0.60 probability to a player, it suggests that, given historical patterns and current signals,
+            that player is substantially more likely than average to declare early — use this to surface the player for targeted advising.</p>
+          </div>
           </div>
         </Card>
       )}
