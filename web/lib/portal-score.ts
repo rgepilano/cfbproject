@@ -16,6 +16,7 @@ export type Candidate = {
   portal_rating: number | null;
   portal_stars: number | null;
   transfer_risk: number | null;
+  nil_value: number | null;
   seasons_left_est: number | null;
   home_state: string | null;
   quality: number;

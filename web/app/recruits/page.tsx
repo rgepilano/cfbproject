@@ -3,7 +3,7 @@ import { ParamSelect } from "@/components/ParamSelect";
 import { Badge, Card, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
 import { sql } from "@/lib/db";
-import { num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
+import { money, num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
 import { getUserDefaultTeam } from "@/lib/users";
@@ -14,6 +14,7 @@ const SORTS = {
   impact: "p_impact DESC NULLS LAST",
   rating: "rating DESC NULLS LAST",
   draft: "p_drafted DESC NULLS LAST",
+  nil: "estimated_nil DESC NULLS LAST",
 } as const;
 type SortKey = keyof typeof SORTS;
 const TIERS = ["Elite", "High", "Solid", "Developmental"];
@@ -40,6 +41,11 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
     "SELECT DISTINCT committed_to FROM analytics.recruit_projection WHERE committed_to IS NOT NULL ORDER BY 1",
   );
   const schoolOptions = schools.map((s) => s.committed_to);
+  const nilColumn = await sql<{ ok: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'analytics' AND table_name = 'recruit_projection' AND column_name = 'estimated_nil') AS ok`,
+  );
+  const hasNilEstimate = nilColumn[0]?.ok ?? false;
 
   // Decide which committed value to use: explicit param -> user's default team -> null
   let committed: string | null = null;
@@ -56,9 +62,10 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
   const [rows, count, states, meta] = await Promise.all([
     sql<Row>(
       `SELECT recruit_id, name, position, pos_group, high_school, city, state, committed_to, stars, rating, ranking,
-              height, weight, success_score, tier, position_rank, p_contributor, p_impact, p_drafted, basis, comparables
+              height, weight, success_score, tier, position_rank, p_contributor, p_impact, p_drafted,
+          ${hasNilEstimate ? "estimated_nil" : "NULL::double precision AS estimated_nil"}, basis, comparables
        FROM analytics.recruit_projection WHERE ${where}
-       ORDER BY ${SORTS[sort]} LIMIT ${PAGE_SIZE} OFFSET $5`,
+        ORDER BY ${sort === "nil" && !hasNilEstimate ? SORTS.success : SORTS[sort]} LIMIT ${PAGE_SIZE} OFFSET $5`,
       [...args, (page - 1) * PAGE_SIZE],
     ),
     sql<{ n: string }>(`SELECT count(*) AS n FROM analytics.recruit_projection WHERE ${where}`, args),
@@ -75,7 +82,9 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
           <h1 className="text-2xl font-bold">{meta[0]?.class_year} Recruit Board</h1>
           <p className="text-sm text-slate-500">
             Success score blends projected peak production percentile, impact probability, and recruit rating,
-            projected as if each recruit joins a typical Power 4 program. OL/LS use rating only.
+            projected as if each recruit joins a typical Power 4 program. NIL uses the median share of the 20 closest
+            first-year peers by position and rating, scaled to the committed school&apos;s latest pool when available.
+            OL/LS use rating only.
           </p>
         </div>
         <a className="text-sm text-blue-600" href="/api/export?table=recruit_projection">CSV</a>
@@ -99,6 +108,7 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
               <Th>Tier</Th><Th>Pos rank</Th><Th>P(contrib.)</Th>
               <Th href={qs(base, { sort: "impact" })} active={sort === "impact"}>P(impact)</Th>
               <Th href={qs(base, { sort: "draft" })} active={sort === "draft"}>P(drafted)</Th>
+              <Th href={qs(base, { sort: "nil" })} active={sort === "nil"}>Est. NIL</Th>
               <Th>Comparable past recruits</Th>
             </tr>
           </thead>
@@ -122,6 +132,7 @@ export default async function RecruitsPage({ searchParams }: { searchParams: Sea
                 <Td>{pct(r.p_contributor)}</Td>
                 <Td>{pct(r.p_impact)}</Td>
                 <Td>{pct(r.p_drafted)}</Td>
+                <Td>{money(r.estimated_nil)}</Td>
                 <Td className="max-w-sm truncate text-xs text-slate-500"><span title={String(r.comparables ?? "")}>{r.comparables}</span></Td>
               </tr>
             ))}

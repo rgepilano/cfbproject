@@ -1,10 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useWatchlist } from "@/components/Watchlist";
+import { money } from "@/lib/util";
 
 export default function WatchlistPage() {
   const { items, remove } = useWatchlist();
+  const [nil, setNil] = useState<Record<string, number | null>>({});
+  const playerIds = items.filter((i) => i.kind === "player").map((i) => i.id).join(",");
+  useEffect(() => {
+    if (!playerIds) return;
+    fetch(`/api/nil?ids=${encodeURIComponent(playerIds)}`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then(setNil)
+      .catch(() => {});
+  }, [playerIds]);
   const groups = [
     { title: "Players", rows: items.filter((i) => i.kind === "player") },
     { title: "Recruits", rows: items.filter((i) => i.kind === "recruit") },
@@ -25,6 +36,9 @@ export default function WatchlistPage() {
                   <span>
                     {i.href ? <Link className="text-blue-600 hover:underline" href={i.href}>{i.label}</Link> : i.label}
                     {i.sub && <span className="ml-2 text-slate-500">{i.sub}</span>}
+                    {i.kind === "player" && i.id in nil && (
+                      <span className="ml-2 text-slate-500">· Est. NIL {money(nil[i.id])}</span>
+                    )}
                   </span>
                   <button className="text-xs text-red-600" onClick={() => remove(i.key)}>Remove</button>
                 </li>

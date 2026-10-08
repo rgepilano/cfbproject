@@ -44,6 +44,7 @@ export default async function ModelsPage() {
   const tr = byName.transfer_risk?.metrics as Record<string, never> | undefined;
   const nfl = byName.nfl_risk?.metrics as Record<string, never> | undefined;
   const rp = byName.recruit_projection?.metrics as Record<string, never> | undefined;
+  const nil = byName.nil_value?.metrics as Record<string, never> | undefined;
 
   return (
     <>
@@ -246,6 +247,70 @@ export default async function ModelsPage() {
             - A recruit with score 0.20 in a system where the class average expected impact
               is 0.05 is relatively promising — the number itself depends on the
               <em>outcome_definition</em>, so compare scores within the same release.
+          </div>
+        </Card>
+      )}
+
+      {nil && (
+        <Card title="Player NIL value — allocation of team NIL pool">
+          <Table>
+            <thead><tr><Th>Calibration check</Th><Th>Value</Th></tr></thead>
+            <tbody>
+              {["calibration", "matched_players", "label_seasons", "spearman", "mean_abs_log_error",
+                "within_published_range", "within_2x", "median_pred_to_estimate", "concentration",
+                "seasons_scored", "score_season_top10_share"].filter((k) => nil[k] !== undefined).map((k) => (
+                <tr key={k}><Td className="font-medium">{k}</Td><Td>{Array.isArray(nil[k]) ? (nil[k] as unknown[]).join(", ") : String(nil[k])}</Td></tr>
+              ))}
+            </tbody>
+          </Table>
+          <p className="mt-2 text-xs text-slate-500">
+            Weights {JSON.stringify(nil["weights"])} · transfer premium {String(nil["transfer_premium"])} ·
+            position multipliers {JSON.stringify(nil["position_multiplier"])}
+          </p>
+          <div className="mt-3 text-xs text-slate-600">
+            <strong>Details (plain language):</strong> Every rostered player at a program with a known NIL budget
+            gets an estimated annual NIL value. The model starts from the team&apos;s total NIL pool
+            (<em>team_season.nil_amt</em> for that season) and splits it across the roster in proportion to each
+            player&apos;s market value. Because the shares add up to 100%, a team&apos;s player estimates always sum to
+            its pool — a bigger budget lifts every player, and a deep room of stars splits the money more ways.
+
+            <strong className="block mt-2">What inputs feed the value</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li><strong>Prior-year production</strong>: production percentile at his position group last season (yards, TDs, tackles, sacks, etc.).</li>
+              <li><strong>Prior-year playing time</strong>: percentile of his share of the position room&apos;s snaps/touches last season.</li>
+              <li><strong>Recruiting status</strong>: recruit rating percentile at his position (unrated players get 0).</li>
+              <li><strong>Experience</strong>: years since high school (more proven, older players earn more).</li>
+              <li><strong>Portal activity</strong>: players who transferred in this season get a premium, scaled by their portal rating — the portal market pays to acquire them.</li>
+              <li><strong>Positional value</strong>: a market multiplier (QB highest, then edge/DL, WR, OL, DB; specialists lowest).</li>
+            </ul>
+            Players with no prior-season role (freshmen, backups) are credited a discounted share of their
+            recruiting pedigree for production and playing time. OL/LS have no individual stats, so pedigree and
+            experience stand in for on-field value.
+
+            <strong className="block mt-2">How the money is split</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Value index (0–100%) = weighted blend of the inputs above.</li>
+              <li>Weight = position multiplier × e<sup>concentration × value index</sup>; share = weight ÷ team total; NIL = share × team pool.</li>
+              <li><em>Concentration</em> controls how top-heavy the split is. It is tuned to best match published
+                  player NIL estimates (the calibration table above); <em>score_season_top10_share</em> is the typical
+                  share of a team&apos;s pool going to its top 10 players.</li>
+            </ul>
+
+            <strong className="block mt-2">How to read the outputs</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Each player page shows the estimate, rank on his team, share of the pool, and the top drivers.</li>
+              <li>Portal board values use the player&apos;s latest season with an estimate (usually at his previous school).</li>
+              <li>Use it as a market benchmark for retention and portal offers, not as a contract figure.</li>
+            </ul>
+
+            <strong className="block mt-2">Limitations and cautions</strong>
+            <ul className="list-disc ml-5 mt-1">
+              <li>Actual deals are private; this is an allocation of an estimated team budget, not reported pay.</li>
+              <li>Published player valuations include national brand endorsements outside the team pool, so they run
+                  higher than these estimates (see <em>median_pred_to_estimate</em>).</li>
+              <li>Social-media following, injuries, and current-season breakouts are not inputs.</li>
+              <li>Players at programs without a recorded NIL pool are not estimated.</li>
+            </ul>
           </div>
         </Card>
       )}

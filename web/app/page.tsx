@@ -3,7 +3,7 @@ import { ParamSelect } from "@/components/ParamSelect";
 import { Badge, Bar, Card, Empty, PlayerLink, Table, Td, Th } from "@/components/ui";
 import { getTeams, sql, getTeamNIL } from "@/lib/db";
 import { getPortalBoard } from "@/lib/portal";
-import { DEFAULT_TEAM, name, num, param, pct, type SearchParams } from "@/lib/util";
+import { DEFAULT_TEAM, money, name, num, param, pct, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
 import { getUserDefaultTeam } from "@/lib/users";
@@ -33,13 +33,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
     ),
     sql<Row>(
       `SELECT athlete_id, first_name, last_name, pos_group, class_year, transfer_risk, transfer_tier, nfl_risk,
-              retention_priority, transfer_drivers
+              retention_priority, transfer_drivers, nil_value
        FROM analytics.departure_risk WHERE team = $1 AND graduating = 0
        ORDER BY retention_priority DESC NULLS LAST LIMIT 8`,
       [team],
     ),
     sql<Row>(
-      `SELECT recruit_id, name, position, stars, success_score, tier
+      `SELECT recruit_id, name, position, stars, success_score, tier, estimated_nil
        FROM analytics.recruit_projection WHERE committed_to = $1 ORDER BY success_score DESC LIMIT 8`,
       [team],
     ),
@@ -78,7 +78,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
 
         <Card title="Top retention priorities" action={<Link className="text-sm text-blue-600" href={`/retention${q}`}>Retention →</Link>}>
           <Table>
-            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>Transfer</Th><Th>NFL</Th><Th>Priority</Th></tr></thead>
+            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>Transfer</Th><Th>NFL</Th><Th>Est. NIL</Th><Th>Priority</Th></tr></thead>
             <tbody>
               {retain.map((r) => (
                 <tr key={String(r.athlete_id)} title={String(r.transfer_drivers ?? "")}>
@@ -86,6 +86,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
                   <Td>{r.pos_group}</Td>
                   <Td><Badge>{r.transfer_tier}</Badge> {num(r.transfer_risk, 0)}</Td>
                   <Td>{num(r.nfl_risk, 0)}</Td>
+                  <Td>{money(r.nil_value)}</Td>
                   <Td className="font-semibold">{num(r.retention_priority)}</Td>
                 </tr>
               ))}
@@ -98,12 +99,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
             <Empty>No 2027 commits recorded for {team}.</Empty>
           ) : (
             <Table>
-              <thead><tr><Th>Recruit</Th><Th>Pos</Th><Th>Stars</Th><Th>Success</Th><Th>Tier</Th></tr></thead>
+              <thead><tr><Th>Recruit</Th><Th>Pos</Th><Th>Stars</Th><Th>Success</Th><Th>Tier</Th><Th>Est. NIL</Th></tr></thead>
               <tbody>
                 {commits.map((r) => (
                   <tr key={String(r.recruit_id)}>
                     <Td>{r.name}</Td><Td>{r.position}</Td><Td>{num(r.stars, 0)}</Td>
                     <Td className="font-semibold">{num(r.success_score)}</Td><Td><Badge>{r.tier}</Badge></Td>
+                    <Td>{money(r.estimated_nil)}</Td>
                   </tr>
                 ))}
               </tbody>
@@ -113,13 +115,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
 
         <Card title="Top portal fits" action={<Link className="text-sm text-blue-600" href={`/portal${q}`}>Portal board →</Link>}>
           <Table>
-            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>From</Th><Th>Quality</Th><Th>Need</Th><Th>Score</Th></tr></thead>
+            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>From</Th><Th>Quality</Th><Th>Need</Th><Th>Est. NIL</Th><Th>Score</Th></tr></thead>
             <tbody>
               {portal.candidates.slice(0, 8).map((c) => (
                 <tr key={c.candidate_id}>
                   <Td><PlayerLink id={c.athlete_id}>{name(c)}</PlayerLink></Td>
                   <Td>{c.pos_group}</Td><Td>{c.current_team}</Td>
-                  <Td>{pct(c.quality)}</Td><Td>{num(100 * c.need, 0)}</Td>
+                  <Td>{pct(c.quality)}</Td><Td>{num(100 * c.need, 0)}</Td><Td>{money(c.nil_value)}</Td>
                   <Td className="font-semibold">{num(c.default_score, 1)}</Td>
                 </tr>
               ))}

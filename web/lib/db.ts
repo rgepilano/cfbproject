@@ -103,7 +103,8 @@ export async function getTeamNIL(team: string, season = 2026): Promise<number | 
       [team, season],
     );
     const v = rows[0]?.nil_amt;
-    if (v !== undefined && v !== null) return Number(v);
+    // team_season stores dollars; callers expect millions.
+    if (v !== undefined && v !== null) return Number(v) / 1e6;
   } catch (e) {
     // If the query fails (table missing or permission), fall back to CSV.
   }

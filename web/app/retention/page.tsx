@@ -2,7 +2,7 @@ import { ParamSelect } from "@/components/ParamSelect";
 import { Badge, Card, PlayerLink, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
 import { getTeams, sql, getTeamNIL } from "@/lib/db";
-import { DEFAULT_TEAM, name, num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
+import { DEFAULT_TEAM, money, name, num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
 import { getUserDefaultTeam } from "@/lib/users";
@@ -13,6 +13,7 @@ const SORTS = {
   nfl: "nfl_risk DESC NULLS LAST",
   leave: "leave_risk DESC NULLS LAST",
   value: "player_value DESC NULLS LAST",
+  nil: "nil_value DESC NULLS LAST",
 } as const;
 type SortKey = keyof typeof SORTS;
 
@@ -38,7 +39,7 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
   const rows = await sql<Row>(
     `SELECT athlete_id, first_name, last_name, position, pos_group, class_year, seasons_left_est, graduating,
             player_value, transfer_risk, transfer_tier, transfer_drivers, nfl_risk, nfl_tier, nfl_drivers,
-            leave_risk, retention_priority, retention_rank, usage_share, production_pct, stars
+            leave_risk, retention_priority, retention_rank, usage_share, production_pct, stars, nil_value, nil_drivers
      FROM analytics.departure_risk
      WHERE team = $1 AND ($2::text IS NULL OR pos_group = $2)
      ORDER BY graduating, ${SORTS[sort]}`,
@@ -74,6 +75,7 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
             <tr>
               <Th>Player</Th><Th>Pos</Th><Th>Class</Th><Th>Seasons left</Th>
               <Th href={qs(base, { sort: "value" })} active={sort === "value"}>Value</Th>
+              <Th href={qs(base, { sort: "nil" })} active={sort === "nil"}>Est. NIL</Th>
               <Th href={qs(base, { sort: "transfer" })} active={sort === "transfer"}>Transfer</Th>
               <Th href={qs(base, { sort: "nfl" })} active={sort === "nfl"}>NFL</Th>
               <Th href={qs(base, { sort: "leave" })} active={sort === "leave"}>Leave</Th>
@@ -93,6 +95,7 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
                 <Td>{num(r.class_year, 0)}</Td>
                 <Td>{Number(r.graduating) === 1 ? "Final year" : num(r.seasons_left_est, 0)}</Td>
                 <Td>{pct(r.player_value)}</Td>
+                <Td><span title={String(r.nil_drivers ?? "")}>{money(r.nil_value)}</span></Td>
                 <Td>{r.transfer_tier ? <Badge>{r.transfer_tier}</Badge> : null} {num(r.transfer_risk, 0)}</Td>
                 <Td>{r.nfl_tier ? <Badge>{r.nfl_tier}</Badge> : "—"} {r.nfl_risk !== null ? num(r.nfl_risk, 0) : ""}</Td>
                 <Td>{num(r.leave_risk, 0)}</Td>

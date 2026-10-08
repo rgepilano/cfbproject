@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from pipeline import player_value
-from recruit_projection import blend_score
+from recruit_projection import blend_score, estimate_nil
 from transfer_risk import (BASELINE_FLAGS, baseline_score, build_stat_features, haversine_miles, match_portal,
                            norm_name)
 
@@ -80,6 +80,26 @@ def test_blend_score_range_and_order():
     a = pd.Series([0.1, 0.5, 0.9])
     s = blend_score(a, a, a)
     assert s.is_monotonic_increasing and s.between(0, 1).all()
+
+
+def test_recruit_nil_uses_similar_first_year_peer_and_committed_team_pool():
+    recruits = pd.DataFrame({
+        "group": ["WR", "WR"], "rating": [0.8, np.nan], "committed_to": ["Target", None],
+    })
+    features = pd.DataFrame({
+        "athlete_id": [1, 2, 3], "season": [2025, 2025, 2025],
+        "years_since_hs": [1, 1, 2], "rating": [0.81, 0.99, 0.80],
+    })
+    nil = pd.DataFrame({
+        "athlete_id": [1, 2, 3], "season": [2025, 2025, 2025], "team": ["Peer", "Peer", "Target"],
+        "group": ["WR"] * 3, "nil_value": [100_000, 900_000, 700_000],
+        "nil_share": [0.01, 0.09, 0.07], "team_nil_pool": [10_000_000] * 3,
+    })
+
+    estimate = estimate_nil(recruits, features, nil, neighbors=1)
+
+    assert estimate.estimated_nil.iloc[0] == pytest.approx(100_000)
+    assert estimate.estimated_nil.iloc[1] == pytest.approx(500_000)
 
 
 def test_player_value_falls_back_to_pedigree():

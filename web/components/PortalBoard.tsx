@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { WatchButton } from "@/components/Watchlist";
 import { type Candidate, DEFAULT_WEIGHTS, scoreCandidate, type Weights } from "@/lib/portal-score";
+import { money } from "@/lib/util";
 
 const LABELS: Record<keyof Weights, string> = {
   quality: "Player quality",
@@ -63,7 +64,7 @@ export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; g
         <table className="min-w-full text-sm">
           <thead className="text-left text-xs uppercase text-slate-500">
             <tr>
-              {["#", "Player", "Pos", "From", "Source", "Score", "Quality", "Need", "Elig.", "Fit", "Production", "Usage", "Transfer risk"].map((h) => (
+              {["#", "Player", "Pos", "From", "Source", "Score", "Quality", "Need", "Elig.", "Fit", "Production", "Usage", "Transfer risk", "Est. NIL"].map((h) => (
                 <th key={h} className="px-2 py-2">{h}</th>
               ))}
             </tr>
@@ -92,6 +93,7 @@ export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; g
                 <td className="px-2 py-1.5">{fmtPct(c.production_pct)}</td>
                 <td className="px-2 py-1.5">{fmtPct(c.usage_share)}</td>
                 <td className="px-2 py-1.5">{c.transfer_risk ?? "—"}</td>
+                <td className="px-2 py-1.5">{money(c.nil_value)}</td>
               </tr>
             ))}
           </tbody>

@@ -146,7 +146,43 @@ def comparables(train: pd.DataFrame, target: pd.DataFrame, k: int = 3) -> pd.Ser
     return result
 
 
-def run(d: dict | None = None, score_class: int = SCORE_CLASS) -> dict:
+def estimate_nil(scores: pd.DataFrame, player_features: pd.DataFrame, nil_scores: pd.DataFrame,
+                 neighbors: int = 20) -> pd.DataFrame:
+    """Estimate recruit NIL from similar first-year players' shares of their team pools."""
+    out = scores.copy()
+    out["estimated_nil"] = np.nan
+    if nil_scores.empty:
+        return out
+
+    player_cols = player_features[["athlete_id", "season", "years_since_hs", "rating"]]
+    peers = nil_scores.merge(player_cols, on=["athlete_id", "season"], how="inner")
+    peers = peers[(peers.years_since_hs == 1) & peers.nil_value.notna() & peers.group.notna()]
+    if peers.empty:
+        return out
+
+    team_pools = (nil_scores.sort_values("season").drop_duplicates("team", keep="last")
+                  .set_index("team").team_nil_pool.to_dict())
+    for idx, recruit in out.iterrows():
+        group_peers = peers[peers.group == recruit.group]
+        if group_peers.empty:
+            continue
+        rated_peers = group_peers.dropna(subset=["rating"])
+        if pd.notna(recruit.rating) and not rated_peers.empty:
+            group_peers = rated_peers.assign(
+                rating_distance=(rated_peers.rating - recruit.rating).abs()
+            ).nsmallest(neighbors, "rating_distance")
+
+        pool = team_pools.get(recruit.committed_to)
+        shares = group_peers.nil_share.dropna()
+        if pool is not None and pd.notna(pool) and not shares.empty:
+            out.at[idx, "estimated_nil"] = float(pool) * shares.median()
+        else:
+            out.at[idx, "estimated_nil"] = group_peers.nil_value.median()
+    return out
+
+
+def run(d: dict | None = None, score_class: int = SCORE_CLASS,
+        nil_reference: tuple[pd.DataFrame, pd.DataFrame] | None = None) -> dict:
     r = build_features(d or load_data())
 
     modelable = r.athlete_id.notna() & r.group.notna() & ~r.group.isin(RATING_ONLY_GROUPS)
@@ -213,6 +249,10 @@ def run(d: dict | None = None, score_class: int = SCORE_CLASS) -> dict:
     pct = s.success_score.rank(pct=True, ascending=False)
     s["tier"] = np.select([pct <= 0.05, pct <= 0.20, pct <= 0.50], ["Elite", "High", "Solid"], "Developmental")
     s["comparables"] = comparables(fit_all, s)
+    if nil_reference is not None:
+        s = estimate_nil(s, *nil_reference)
+    else:
+        s["estimated_nil"] = np.nan
     metrics["score_class"] = score_class
     metrics["reference_program_sp"] = round(float(reference), 2)
     metrics["tier_counts"] = s.tier.value_counts().to_dict()
@@ -221,7 +261,7 @@ def run(d: dict | None = None, score_class: int = SCORE_CLASS) -> dict:
 
 OUT_COLS = ["recruit_id", "name", "position", "group", "high_school", "city", "state", "committed_to",
             "stars", "rating", "ranking", "height", "weight", "success_score", "tier", "position_rank",
-            "p_contributor", "p_impact", "p_drafted", "projected_peak_pct", "basis", "comparables"]
+            "p_contributor", "p_impact", "p_drafted", "projected_peak_pct", "estimated_nil", "basis", "comparables"]
 
 
 def main() -> None:

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 import nfl_risk
+import nil_value
 import pipeline
 import recruit_projection
 import transfer_risk
@@ -83,17 +84,26 @@ def main() -> None:
     tr = transfer_risk.run(d)
     f, extras = tr["features"], tr["extras"]
     nfl = nfl_risk.run(f, nfl_risk.load_draft())
-    rp = recruit_projection.run()
+    pools = nil_value.load_team_pools()
+    nil = nil_value.run(f, extras["arrivals"], d["portal"], pools)
+    nil_scores = nil["scores"]
+    rp = recruit_projection.run(nil_reference=(f, nil_scores))
 
     risk = pipeline.departure_risk(f, tr["scores"], nfl["scores"], rp["scores"])
+    risk = risk.merge(nil_scores[["athlete_id", "season", "nil_value", "nil_drivers"]],
+                      on=["athlete_id", "season"], how="left")
     pipe = pipeline.roster_pipeline(risk, rp["scores"])
     candidates = pipeline.portal_candidates(f, risk, d["portal"], extras["departures"])
+    latest_nil = nil_scores.sort_values("season").drop_duplicates("athlete_id", keep="last")
+    candidates["nil_value"] = candidates.athlete_id.map(latest_nil.set_index("athlete_id").nil_value)
     dq = data_quality(d, extras)
 
-    metrics = {"transfer_risk": tr["metrics"], "nfl_risk": nfl["metrics"], "recruit_projection": rp["metrics"]}
+    metrics = {"transfer_risk": tr["metrics"], "nfl_risk": nfl["metrics"], "recruit_projection": rp["metrics"],
+               "nil_value": nil["metrics"]}
     metrics["transfer_risk"]["score_summary"] = summarize(tr["scores"].transfer_prob)
     metrics["nfl_risk"]["score_summary"] = summarize(nfl["scores"].nfl_prob)
     metrics["recruit_projection"]["score_summary"] = summarize(rp["scores"].p_impact)
+    metrics["nil_value"]["score_summary"] = summarize(nil_scores[nil_scores.season == SCORE_SEASON].nil_value)
     for name, m in metrics.items():
         (OUTPUT_DIR / f"{name}_metrics.json").write_text(json.dumps(m, indent=2, default=str))
         print(f"\n== {name} ==\n{json.dumps(m, indent=2, default=str)}")
@@ -109,7 +119,7 @@ def main() -> None:
                  "transfer_tier", "transfer_baseline", "transfer_drivers", "nfl_prob", "nfl_risk", "nfl_tier",
                  "nfl_drivers", "leave_prob", "leave_risk", "comparable_teammates", "incoming_strong_recruits",
                  "scarcity", "retention_priority", "retention_rank", "usage_share", "production_pct", "stars",
-                 "rating"]
+                 "rating", "nil_value", "nil_drivers"]
     recruit_cols = recruit_projection.OUT_COLS + ["athlete_id"]
     portal = d["portal"].reset_index(drop=True).rename_axis("portal_row").reset_index()
     portal = portal.merge(extras["departures"][["portal_row", "athlete_id", "match"]], on="portal_row", how="left")
@@ -119,7 +129,10 @@ def main() -> None:
         "team": (d["teams"].merge(d["team_location"], on="team", how="left") if d.get("team_location") is not None
                  else d["teams"], [["team"]]),
         "player_season": (f[player_cols], [["athlete_id", "season"], ["season", "team"]]),
-        "team_season": (extras["team_season"], [["team", "season"]]),
+        # nil_amt is loaded externally; carry it over because write_table replaces the table.
+        "team_season": (extras["team_season"].merge(pools, on=["team", "season"], how="left"), [["team", "season"]]),
+        "player_nil": (nil_scores.assign(run_id=run_id, scored_at=scored_at),
+                       [["athlete_id", "season"], ["team", "season"]]),
         "portal_entry": (portal, [["season"], ["athlete_id"]]),
         "departure_risk": (risk[risk_cols].assign(run_id=run_id, scored_at=scored_at),
                            [["team"], ["athlete_id"], ["retention_priority"]]),

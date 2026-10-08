@@ -24,6 +24,15 @@ export function pct(v: unknown, digits = 0): string {
   return Number.isFinite(n) ? `${(100 * n).toFixed(digits)}%` : "—";
 }
 
+export function money(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${Math.round(n / 1e3)}K`;
+  return `$${Math.round(n)}`;
+}
+
 export function name(r: { first_name?: unknown; last_name?: unknown }): string {
   return `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim();
 }

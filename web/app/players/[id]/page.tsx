@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Badge, Card, Empty, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
 import { sql } from "@/lib/db";
-import { name, num, pct } from "@/lib/util";
+import { money, name, num, pct } from "@/lib/util";
 
 type Row = Record<string, string | number | null>;
 
@@ -10,7 +10,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!/^\d{1,12}$/.test(id)) notFound();
 
-  const [seasons, risk, portal] = await Promise.all([
+  const [seasons, risk, portal, nil] = await Promise.all([
     sql<Row>(
       `SELECT season, team, conference, position, pos_group, class_year, seasons_left_est, height, weight, home_state,
               recruit_year, stars, rating, usage_share, depth_rank, production_pct, prior_transfer, entered_portal
@@ -23,10 +23,18 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
        FROM analytics.portal_entry WHERE athlete_id = $1 ORDER BY season`,
       [id],
     ),
+    sql<Row>(
+      `SELECT season, team, team_nil_pool, nil_value, nil_share, nil_rank_team, value_index, position_multiplier,
+              production, playing_time, pedigree, experience, transfer_in, nil_drivers
+       FROM analytics.player_nil WHERE athlete_id = $1 ORDER BY season`,
+      [id],
+    ),
   ]);
   if (seasons.length === 0) notFound();
   const latest = seasons[seasons.length - 1];
   const r = risk[0];
+  const n = nil[nil.length - 1];
+  const nilBySeason = new Map(nil.map((x) => [String(x.season), x]));
   const displayName = name(r ?? (await firstName(id)));
 
   return (
@@ -68,16 +76,38 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
+      {n && (
+        <Card title={`Estimated NIL value (${n.season})`}>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+            <div className="text-3xl font-bold">{money(n.nil_value)}</div>
+            <div className="text-sm text-slate-500">
+              #{num(n.nil_rank_team, 0)} on {n.team} · {pct(n.nil_share, 1)} of {money(n.team_nil_pool)} team pool
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{n.nil_drivers}</p>
+          <div className="mt-2 flex flex-wrap gap-x-4 text-xs text-slate-600">
+            <span>Value index {pct(n.value_index)}</span>
+            <span>Production {pct(n.production)}</span>
+            <span>Playing time {pct(n.playing_time)}</span>
+            <span>Pedigree {pct(n.pedigree)}</span>
+            <span>Experience {pct(n.experience)}</span>
+            <span>Position ×{num(n.position_multiplier, 2)}</span>
+            <span>Portal addition {Number(n.transfer_in) === 1 ? "Yes" : "No"}</span>
+          </div>
+        </Card>
+      )}
+
       <Card title="Seasons">
         <Table>
           <thead>
-            <tr><Th>Season</Th><Th>Team</Th><Th>Pos</Th><Th>Class</Th><Th>Usage share</Th><Th>Depth</Th><Th>Production pct</Th><Th>Entered portal after</Th></tr>
+            <tr><Th>Season</Th><Th>Team</Th><Th>Pos</Th><Th>Class</Th><Th>Usage share</Th><Th>Depth</Th><Th>Production pct</Th><Th>Est. NIL</Th><Th>Entered portal after</Th></tr>
           </thead>
           <tbody>
             {seasons.map((s) => (
               <tr key={String(s.season)}>
                 <Td>{s.season}</Td><Td>{s.team}</Td><Td>{s.position}</Td><Td>{num(s.class_year, 0)}</Td>
                 <Td>{pct(s.usage_share)}</Td><Td>{num(s.depth_rank, 0)}</Td><Td>{pct(s.production_pct)}</Td>
+                <Td>{money(nilBySeason.get(String(s.season))?.nil_value)}</Td>
                 <Td>{s.entered_portal === null ? "—" : Number(s.entered_portal) === 1 ? "Yes" : "No"}</Td>
               </tr>
             ))}

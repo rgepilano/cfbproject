@@ -8,7 +8,7 @@ export async function getPortalBoard(team: string): Promise<{ candidates: Candid
     sql<Omit<Candidate, "need" | "fit" | "default_score">>(
       `SELECT candidate_id, source, athlete_id, first_name, last_name, position, pos_group, current_team, class_year,
               production_pct, usage_share, portal_rating, portal_stars, transfer_risk, seasons_left_est, home_state,
-              quality, eligibility_score
+              quality, eligibility_score, nil_value
        FROM analytics.portal_candidate WHERE current_team IS DISTINCT FROM $1`,
       [team],
     ),
