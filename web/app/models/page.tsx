@@ -53,7 +53,8 @@ export default async function ModelsPage() {
         All validation is out-of-time (train on earlier seasons/classes, test on the next).
       </p>
 
-      <p className="mt-4 text-base text-slate-700">
+      <h2 className="mt-4 text-lg font-semibold">How to read this page</h2>
+      <p className="mt-2 text-base text-slate-700">
         High-level summary: this page surfaces the most recent trained models and their
         validation results for the production families we maintain. Each card below shows
         the primary validation metrics and a short interpretation — use this when you need
@@ -61,19 +62,48 @@ export default async function ModelsPage() {
         interpreting predictions.
       </p>
 
+      <div className="mt-3 text-sm text-slate-700">
+        <strong>Quick guide for non-technical audiences:</strong>
+        <ul className="list-disc ml-5 mt-2">
+          <li>Each card is one model family (what the model predicts).</li>
+          <li>"Score" is the model's output — usually a probability or risk number per player.</li>
+          <li>Validation metrics below show how the model performed on held-out data (data
+              the model did not see during training).</li>
+          <li>Use the "Details" text in each card for plain-language explanations and
+              operational guidance (what the score means for staff decisions).</li>
+        </ul>
+
+        <strong className="mt-3 block">Metrics explained (plain language)</strong>
+        <ul className="list-disc ml-5 mt-2">
+          <li><strong>Score</strong>: A higher score means the model thinks the event is more likely for that person (for example, higher transfer risk).</li>
+          <li><strong>Brier</strong>: Measures how close predicted probabilities are to actual outcomes (lower is better). Think of it as an average squared "error" for probabilities.</li>
+          <li><strong>PR AUC</strong> (Precision–Recall AUC): Shows how well the model finds true positives without including too many false positives. Useful when the event is rare.</li>
+          <li><strong>ROC AUC</strong>: Indicates how well the model ranks positives above negatives (higher = better ranking).</li>
+          <li><strong>Base rate</strong>: The observed frequency of the outcome (for context — if the base rate is 5%, a model that finds 25% positives in a slice is doing well).</li>
+          <li><strong>Precision_top10pct</strong>: Of the top 10% highest-scored people, what fraction actually had the outcome. This shows how useful the top-ranked list is for targeted actions.</li>
+        </ul>
+      </div>
+
       {tr && (
         <Card title="Transfer risk — validation (roster 2025 → portal 2026)">
           <MetricTable data={tr["validation"]} />
           <p className="mt-2 text-xs text-slate-500">Chosen model: {tr["chosen_model"]} · tiers {JSON.stringify(tr["tier_counts"])}</p>
           <div className="mt-3 text-xs text-slate-600">
-            <strong>Details:</strong> Transfer risk predicts the probability a rostered player
-            will enter the transfer portal in the subsequent season. Training uses historical
-            roster and event features with an out-of-time split (train on prior seasons,
-            validate on the next). Shown metrics reflect per-tier and overall performance
-            (precision/recall, AUC, or calibration as available). The <em>chosen_model</em>
-            is the final saved variant; <em>tier_counts</em> show how many players fall into
-            each risk bucket. Interpret scores as relative risk estimates — small absolute
-            probabilities can still be meaningful when compared across players.
+            <strong>Details (plain language):</strong> Transfer risk estimates how likely a
+            rostered player is to enter the transfer portal the next season. We train the
+            model on past seasons and test it on the following season (this mimics real
+            deployment). Metrics shown summarize how well the model separates higher-risk
+            players from lower-risk ones and how accurate the probabilities are.
+
+            <strong className="block mt-2">What this means for staff</strong>
+            - Use high scores to prioritize retention conversations and targeted support.
+            - The model gives relative risk, not certainties: it helps allocate scarce
+              advising resources rather than making final decisions.
+
+            <strong className="block mt-2">Technical note (for transparency)</strong>
+            - <em>Chosen_model</em> is the algorithm/version we selected after validation.
+            - <em>Tier_counts</em> show how many athletes fall into each risk bucket.
+            - Small probabilities can still imply meaningful differences when comparing players.
           </div>
         </Card>
       )}
@@ -84,13 +114,20 @@ export default async function ModelsPage() {
             Mode: {nfl["mode"]} · expected early entrants next draft: {nfl["expected_early_entrants"]} · tiers {JSON.stringify(nfl["tier_counts"]) }
           </p>
           <div className="mt-3 text-xs text-slate-600">
-            <strong>Details:</strong> This model estimates the likelihood a player will
-            declare early for the NFL draft. Validation is done out-of-time and reports
-            discrimination and ranking metrics; the <em>mode</em> indicates whether the run
-            targeted a classification threshold or score calibration objective. The
-            <em>expected_early_entrants</em> is a model-driven aggregate forecast for the
-            upcoming draft. Use the model to prioritize scouting and advising efforts,
-            but combine with qualitative context (injury, draft stocks) for decisions.
+            <strong>Details (plain language):</strong> This model predicts the chance a
+            college player will declare early for the NFL draft. In simple terms, the model
+            ranks players by how likely they are to enter the draft early and gives an
+            estimated probability for each player.
+
+            <strong className="block mt-2">What this means for staff</strong>
+            - Use the ranking to focus conversations with players and prepare draft
+              readiness resources for those most likely to declare.
+            - The <em>expected_early_entrants</em> number is an aggregate forecast and should
+              be used alongside scouting reports and agent intelligence.
+
+            <strong className="block mt-2">Technical note</strong>
+            - The model is intended to inform planning and resource allocation, not replace
+              case-by-case evaluation.
           </div>
         </Card>
       )}
@@ -105,14 +142,18 @@ export default async function ModelsPage() {
             Outcomes: {JSON.stringify(rp["outcome_definition"]) }
           </p>
           <div className="mt-3 text-xs text-slate-600">
-            <strong>Details:</strong> Recruit projection forecasts future on-field impact
-            for a recruiting class (example: peak playing percentage or impact-based
-            outcomes). Metrics shown include Spearman rank correlation for peak projections,
-            ROC-AUC for impact classification, and top-decile hit rate for identifying
-            high-impact recruits. The <em>outcome_definition</em> explains how impact is
-            measured (playtime, starts, or a composite). These projections are higher-level
-            signals for roster planning and recruiting prioritization — they do not
-            replace coach evaluations.
+            <strong>Details (plain language):</strong> Recruit projection provides an estimate
+            of a recruit's future on-field impact (for example, expected playing time or a
+            composite impact score). The metrics show whether the model tends to rank the
+            better future performers higher (Spearman) and how well it separates high
+            impact recruits from others (ROC-AUC, top-decile hit rate).
+
+            <strong className="block mt-2">What this means for staff</strong>
+            - Use these projections as an additional signal when prioritizing recruits, but
+              keep coach judgment central to final decisions.
+            - The <em>outcome_definition</em> explains exactly what "impact" means here
+              (e.g., percentage of games started, composite metrics); check it before
+              using the numbers for recruiting strategy.
           </div>
         </Card>
       )}
