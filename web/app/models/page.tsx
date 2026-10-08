@@ -187,7 +187,6 @@ export default async function ModelsPage() {
             <p className="mt-1">If the model assigns a 0.60 probability to a player, it suggests that, given historical patterns and current signals,
             that player is substantially more likely than average to declare early — use this to surface the player for targeted advising.</p>
           </div>
-          </div>
         </Card>
       )}
       {rp && (
