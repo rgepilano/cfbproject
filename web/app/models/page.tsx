@@ -142,18 +142,52 @@ export default async function ModelsPage() {
             Outcomes: {JSON.stringify(rp["outcome_definition"]) }
           </p>
           <div className="mt-3 text-xs text-slate-600">
-            <strong>Details (plain language):</strong> Recruit projection provides an estimate
-            of a recruit's future on-field impact (for example, expected playing time or a
-            composite impact score). The metrics show whether the model tends to rank the
-            better future performers higher (Spearman) and how well it separates high
-            impact recruits from others (ROC-AUC, top-decile hit rate).
+            <strong>Details (plain language):</strong> Recruit projection gives an estimated
+            future impact for recruits in the class shown. "Impact" is defined explicitly
+            in <em>outcome_definition</em> (for example: percent of games played in the first
+            three seasons, a starts-weighted minutes metric, or a composite that blends
+            playing time and performance). The model returns a score for each recruit that
+            represents relative expected contribution compared with peers.
 
-            <strong className="block mt-2">What this means for staff</strong>
-            - Use these projections as an additional signal when prioritizing recruits, but
-              keep coach judgment central to final decisions.
-            - The <em>outcome_definition</em> explains exactly what "impact" means here
-              (e.g., percentage of games started, composite metrics); check it before
-              using the numbers for recruiting strategy.
+            <strong className="block mt-2">What inputs feed the model</strong>
+            - High-school/performance metrics (game stats, offer level, camp/trial data).
+            - Physical attributes (height, weight, age) and position grouping.
+            - Contextual signals (team level, recruit's exposure, multi-sport background).
+            - Historical labels from prior classes tying these inputs to later college impact.
+
+            <strong className="block mt-2">How to read the metrics</strong>
+            - <em>Spearman rank</em>: shows whether the model tends to put higher-impact
+              future players at higher scores (useful when you want a ranked list).
+            - <em>ROC-AUC</em>: measures how well the model separates high-impact recruits
+              from lower-impact ones (50% is random, closer to 100% is better).
+            - <em>Top-decile hit rate</em>: of the top 10% ranked recruits, how many
+              actually become high-impact players — a practical measure of how useful the
+              short-list is for recruiting focus.
+
+            <strong className="block mt-2">Operational use and examples</strong>
+            - Use scores to prioritize scouting visits and allocate recruiting budget to the
+              highest-ranked prospects.
+            - Example: if the base rate of high-impact outcomes is 5% but the top-decile
+              hit rate is 30%, the model provides 6× enrichment and identifies a much
+              stronger candidate pool for targeted offers.
+
+            <strong className="block mt-2">Limitations and cautions</strong>
+            - These are probabilistic forecasts, not guarantees. Low scores do not mean a
+              recruit "can't" succeed — they mean the model has less historical evidence
+              to expect high impact.
+            - Models can encode historical biases in recruiting exposure and opportunity;
+              combine quantitative results with coach evaluation to avoid over-reliance.
+            - Check calibration occasionally: if predicted probabilities consistently
+              over- or under-estimate outcomes, the scores need recalibration before use.
+
+            <strong className="block mt-2">Maintenance notes</strong>
+            - We retrain annually after each completed class; monitor performance drift and
+              data quality for cohorts with different characteristics.
+
+            <strong className="block mt-2">Quick example interpretation</strong>
+            - A recruit with score 0.20 in a system where the class average expected impact
+              is 0.05 is relatively promising — the number itself depends on the
+              <em>outcome_definition</em>, so compare scores within the same release.
           </div>
         </Card>
       )}
