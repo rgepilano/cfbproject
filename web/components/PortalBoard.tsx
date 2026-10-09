@@ -25,7 +25,7 @@ export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; g
 
   const ranked = useMemo(() => {
     return candidates
-      .filter((c) => (!group || c.pos_group === group) && (!source || c.source === source))
+      .filter((c) => (!group || c.pos_group === group) && (!source || (source === "Committed" ? c.source.startsWith("Committed") : c.source === source)))
       .map((c) => ({ ...c, score: scoreCandidate(c, weights) }))
       .sort((a, b) => b.score - a.score);
   }, [candidates, weights, group, source]);
@@ -53,6 +53,7 @@ export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; g
           <select className="rounded border px-2 py-1 text-sm dark:bg-slate-900" value={source} onChange={(e) => setSource(e.target.value)}>
             <option value="">All sources</option>
             <option>In portal (uncommitted)</option>
+            <option>Committed</option>
             <option>Watch list (high transfer risk)</option>
           </select>
           <button className="rounded border px-2 py-1 text-sm" onClick={() => setWeights(DEFAULT_WEIGHTS)}>Reset weights</button>
@@ -84,7 +85,7 @@ export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; g
                 </td>
                 <td className="px-2 py-1.5">{c.position}</td>
                 <td className="px-2 py-1.5">{c.current_team}</td>
-                <td className="px-2 py-1.5 text-xs text-slate-500">{c.source.startsWith("In portal") ? "Portal" : "Watch"}</td>
+                <td className="px-2 py-1.5 text-xs text-slate-500">{c.source.startsWith("In portal") ? "Portal" : c.source.startsWith("Committed") ? c.source.replace("Committed to ", "→ ") : "Watch"}</td>
                 <td className="px-2 py-1.5 font-semibold">{c.score.toFixed(1)}</td>
                 <td className="px-2 py-1.5">{fmtPct(c.quality)}</td>
                 <td className="px-2 py-1.5">{fmtPct(c.need)}</td>
