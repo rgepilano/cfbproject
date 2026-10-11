@@ -113,7 +113,7 @@ def main() -> None:
                "nil_value": nil["metrics"]}
     metrics["nil_value"]["forecast"] = {
         "season": SCORE_SEASON + 1, "players": len(nil_forecast),
-        "method": "current NIL anchor plus explicit inflation and bounded performance, opportunity and market adjustments; allocation fallback",
+        "method": "current NIL anchor, inflation and adjustments; backups blend toward position starter value by heuristic starting probability",
         "inflation_rate": nil_value.FORECAST_INFLATION_RATE,
         "assumptions": "same team; forecasts not constrained to team budget; inflation is an assumption; usage is not snaps; no contract labels",
     }

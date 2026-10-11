@@ -165,6 +165,31 @@ def test_nil_anchor_inflation_performance_and_low_usage_protection():
         forecast_returners(features, risk, scores, pools, 4.5, inflation_rate=-0.1)
 
 
+def test_backup_starter_blend_responds_to_departures_and_competition():
+    from nil_value import forecast_returners
+    features = pd.DataFrame({
+        "athlete_id": [1, 2], "season": [2026] * 2, "team": ["A"] * 2, "group": ["QB"] * 2,
+        "rating_pct": [0.8, 0.8], "rating": [0.9] * 2, "class_year": [2] * 2,
+        "usage_share": [0.95, 0.05], "production_pct": [0.9, 0.1], "seasons_left_est": [2, 2],
+    })
+    risk = pd.DataFrame({"athlete_id": [1, 2], "graduating": [0, 0], "leave_prob": [0.0, 0.0]})
+    scores = pd.DataFrame({"athlete_id": [1, 2], "team": ["A"] * 2, "group": ["QB"] * 2,
+                           "season": [2026] * 2, "nil_value": [2_000_000, 100_000], "production": [0.9, 0.1]})
+    pools = pd.DataFrame({"team": ["A"], "season": [2026], "nil_amt": [3_000_000]})
+    retained = forecast_returners(features, risk, scores, pools, 4.5).set_index("athlete_id")
+    risk.loc[0, "graduating"] = 1
+    risk.loc[0, "leave_prob"] = 1.0
+    opening = forecast_returners(features, risk, scores, pools, 4.5).set_index("athlete_id")
+    assert opening.loc[2, "starting_probability"] > retained.loc[2, "starting_probability"]
+    assert opening.loc[2, "nil_forecast"] > opening.loc[2, "backup_nil_estimate"]
+    assert opening.loc[2, "nil_forecast"] <= opening.loc[2, "starter_nil_value"]
+    recruits = pd.DataFrame({"committed_to": ["A"], "group": ["QB"], "success_score": [95]})
+    crowded = forecast_returners(features, risk, scores, pools, 4.5, recruits).set_index("athlete_id")
+    assert crowded.loc[2, "starting_probability"] < opening.loc[2, "starting_probability"]
+    assert crowded.loc[2, "nil_forecast"] < opening.loc[2, "nil_forecast"]
+    assert crowded.starting_probability.between(0, 1).all()
+
+
 def test_roster_nil_budget_adds_returner_cost_and_recruits():
     from nil_value import forecast_roster_costs
     roster = pd.DataFrame({"team": ["A", "A"], "group": ["QB", "QB"], "horizon": [1, 2],

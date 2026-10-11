@@ -23,6 +23,8 @@ TRANSFER_PREMIUM = 0.10
 UNPROVEN_DISCOUNT = 0.6
 DEFAULT_CONCENTRATION = 5.0
 FORECAST_INFLATION_RATE = 0.05
+STARTER_SLOTS = {"QB": 1, "RB": 1, "WR": 3, "TE": 1, "OL": 5, "DL": 4, "LB": 3, "DB": 4,
+                 "K": 1, "P": 1, "LS": 1, "ATH": 1}
 CONCENTRATION_GRID = np.arange(1.0, 15.01, 0.5)
 
 COMPONENT_LABELS = {
@@ -242,6 +244,24 @@ def forecast_returners(f: pd.DataFrame, risk: pd.DataFrame, scores: pd.DataFrame
                                        np.where(current.group.isin(STAT_GROUPS), UNPROVEN_DISCOUNT * pedigree, proxy))
     current["pedigree"] = pedigree
     current["experience"] = experience
+    slots = current.group.map(STARTER_SLOTS).fillna(1)
+    role_rank = usage.groupby(room_keys).rank(ascending=False, method="first")
+    current["is_backup"] = role_rank > slots
+    strength = (0.6 * usage + 0.25 * pedigree + 0.15 * current.production.fillna(0) + 0.05).where(eligible, 0)
+    rivals = (strength * (1 - departure)).groupby(room_keys).transform("sum") - strength * (1 - departure)
+    current["starting_probability"] = (slots * strength / (strength + rivals + incoming_claim).where(
+        strength + rivals + incoming_claim > 0, 1)).clip(0, 1)
+    current["starter_nil_value"] = np.nan
+    if {"athlete_id", "team"}.issubset(scores.columns):
+        reference = current[["athlete_id", "team", "group"]].merge(
+            scores[scores.season == SCORE_SEASON][["athlete_id", "team", "nil_value"]],
+            on=["athlete_id", "team"], how="left", validate="one_to_one")
+        reference["is_starter"] = (role_rank <= slots).to_numpy() & (usage > 0).to_numpy()
+        starters = reference[reference.is_starter & (reference.nil_value > 0)]
+        position_value = starters.groupby("group").nil_value.median()
+        room_value = starters.groupby(["team", "group"]).nil_value.median()
+        current["starter_nil_value"] = [room_value.get((team, group), position_value.get(group, np.nan))
+                                        for team, group in zip(current.team, current.group)]
     current["value_index"] = sum(WEIGHTS[column] * current[column].fillna(0) for column in WEIGHTS).clip(0, 1)
     current["position_multiplier"] = current.group.map(POSITION_MULTIPLIER).fillna(0.8) * (1 + current.position_growth)
     current["season"] = SCORE_SEASON + 1
@@ -264,6 +284,12 @@ def forecast_returners(f: pd.DataFrame, risk: pd.DataFrame, scores: pd.DataFrame
     current["forecast_basis"] = np.where(current.current_nil_anchor > 0, "current NIL anchor", "allocation fallback")
     current["inflation_rate"] = inflation_rate
     current["nil_forecast"] = anchored.where(current.current_nil_anchor > 0, current.nil_value * (1 + inflation_rate)).round(-2)
+    current["backup_nil_estimate"] = current.nil_forecast
+    current["starter_nil_value"] *= (1 + inflation_rate) * (1 + current.market_adjustment)
+    starter_target = current.starter_nil_value.fillna(current.nil_forecast).clip(lower=current.nil_forecast)
+    blended = ((1 - current.starting_probability) * current.backup_nil_estimate
+               + current.starting_probability * starter_target)
+    current["nil_forecast"] = blended.where(current.is_backup, current.nil_forecast).round(-2)
     current["return_probability"] = (1 - current.leave_prob).clip(0, 1)
     current["expected_returning_nil"] = (current.nil_forecast * current.return_probability).round(-2)
     current["nil_forecast_drivers"] = current.apply(
@@ -273,12 +299,15 @@ def forecast_returners(f: pd.DataFrame, risk: pd.DataFrame, scores: pd.DataFrame
                 f"Opportunity-adjusted production {row.production:.0%}; projected playing time {row.playing_time:.0%}; "
                 f"usage share {row.usage_share:.0%} -> {row.projected_usage_share:.0%}; "
                 f"vacated-role gain {row.opportunity_gain:.0%}; "
+                f"starting-role probability {row.starting_probability:.0%} (heuristic); "
+                f"starter valuation {row.starter_nil_value:,.0f}; "
                     f"{row.group} position multiplier {row.position_multiplier:.2f}; "
                     f"budget trend {row.budget_growth:+.0%}; position trend {row.position_growth:+.0%}", axis=1)
     return current[["athlete_id", "season", "team", "group", "nil_forecast", "return_probability",
                     "expected_returning_nil", "projected_usage_share", "opportunity_gain",
                     "current_nil_anchor", "inflation_rate", "performance_adjustment", "opportunity_adjustment",
-                    "market_adjustment", "forecast_basis",
+                    "market_adjustment", "forecast_basis", "starting_probability", "starter_nil_value",
+                    "backup_nil_estimate", "is_backup",
                     "nil_forecast_drivers"]].rename(columns={"season": "forecast_season"})
 
 

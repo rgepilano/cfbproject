@@ -1,6 +1,6 @@
 import "server-only";
 import { sql, tableExists } from "@/lib/db";
-import { type Candidate, DEFAULT_WEIGHTS, scoreCandidate } from "@/lib/portal-score";
+import { type Candidate, DEFAULT_WEIGHTS, estimateSigningNIL, scoreCandidate } from "@/lib/portal-score";
 
 const POS_GROUP: Record<string, string> = {
   QB: "QB", PRO: "QB", DUAL: "QB", RB: "RB", FB: "RB", APB: "RB", WR: "WR", TE: "TE",
@@ -52,14 +52,15 @@ export async function getPortalBoard(
   team: string,
   year?: string,
   latestYear?: string,
+  athleteId?: string,
 ): Promise<{ candidates: Candidate[]; hasLocation: boolean }> {
   if (!year || !latestYear) {
     latestYear = (await getPortalYears())[0];
     year = latestYear;
   }
   const hasLocation = await getHasLocation();
-  const [entrants, watch, needs, confs, loc] = await Promise.all([
-    sql<Raw>(
+  const [entrants, watch, needs, confs, loc, budgets, rooms] = await Promise.all([
+    athleteId ? Promise.resolve([] as Raw[]) : sql<Raw>(
       `SELECT pe.athlete_id::text AS athlete_id, pe.first_name, pe.last_name, pe.position, pe.origin AS current_team,
               pe.destination, pe.rating AS portal_rating, pe.stars AS portal_stars,
               ps.class_year, ps.production_pct, ps.usage_share, ps.usage_pct, ps.rating_pct, ps.seasons_left_est, ps.home_state,
@@ -74,7 +75,24 @@ export async function getPortalBoard(
        WHERE pe.season = $1 AND coalesce(pe.eligibility, '') <> 'Withdrawn'`,
       [Number(year), Number(latestYear)],
     ),
-    year === latestYear
+    athleteId
+      ? sql<Raw>(
+          `SELECT d.athlete_id::text AS athlete_id, d.first_name, d.last_name, d.position, d.pos_group,
+                  d.team AS current_team, d.class_year, d.production_pct, d.usage_share,
+                  NULL::double precision AS portal_rating, d.stars AS portal_stars, d.transfer_risk,
+                  d.seasons_left_est, ps.home_state, coalesce(pc.quality, d.player_value) AS quality,
+                  coalesce(pc.eligibility_score, least(1.0, greatest(0.0, d.seasons_left_est / 4.0))) AS eligibility_score,
+                  d.nil_value, d.nil_forecast, d.forecast_season, d.nil_forecast_drivers,
+                  'Player lookup' AS source
+           FROM analytics.departure_risk d
+           LEFT JOIN analytics.player_season ps ON ps.athlete_id = d.athlete_id AND ps.season = d.season
+           LEFT JOIN LATERAL (
+             SELECT quality, eligibility_score FROM analytics.portal_candidate
+             WHERE athlete_id = d.athlete_id AND source LIKE 'Watch%' ORDER BY candidate_id LIMIT 1
+           ) pc ON true
+           WHERE d.athlete_id = $1`, [athleteId],
+        )
+      : year === latestYear
       ? sql<Raw>(
           `SELECT athlete_id::text AS athlete_id, first_name, last_name, position, pos_group, current_team, class_year,
                   production_pct, usage_share, portal_rating, portal_stars, transfer_risk, seasons_left_est, home_state,
@@ -90,6 +108,35 @@ export async function getPortalBoard(
     hasLocation
       ? sql<{ state: string }>("SELECT state FROM analytics.cfbd_team_location WHERE team = $1 LIMIT 1", [team])
       : Promise.resolve([] as { state: string }[]),
+    sql<{ team: string; budget: number }>(
+      `WITH history AS (
+         SELECT team, season, nil_amt, lag(nil_amt) OVER (PARTITION BY team ORDER BY season) AS previous,
+                lag(season) OVER (PARTITION BY team ORDER BY season) AS previous_season
+         FROM analytics.team_season WHERE nil_amt > 0
+       ), growth AS (
+         SELECT team, percentile_cont(0.5) WITHIN GROUP (ORDER BY nil_amt / previous - 1) AS rate
+         FROM history WHERE season - previous_season = 1 AND previous > 0 GROUP BY team
+       )
+       SELECT DISTINCT ON (h.team) h.team,
+              h.nil_amt * 1.05 * (1 + greatest(-0.20, least(0.25, coalesce(g.rate, 0)))) AS budget
+       FROM history h LEFT JOIN growth g USING (team) ORDER BY h.team, h.season DESC`,
+    ),
+    sql<{ pos_group: string; competition: number; starter_value: number; forecast_season: number }>(
+      `WITH returners AS (
+         SELECT f.pos_group, max(f.forecast_season) AS forecast_season,
+                sum((0.6 * coalesce(f.projected_usage_share, 0) + 0.25 * coalesce(d.player_value, 0)
+                     + 0.15 * coalesce(d.production_pct, 0) + 0.05) * f.return_probability) AS competition,
+                avg(f.starter_nil_value) AS starter_value
+         FROM analytics.player_nil_forecast f JOIN analytics.departure_risk d USING (athlete_id)
+         WHERE f.team = $1 GROUP BY f.pos_group
+       ), recruits AS (
+         SELECT pos_group, sum(0.3 * coalesce(success_score, 0) / 100) AS competition
+         FROM analytics.recruit_projection WHERE committed_to = $1 GROUP BY pos_group
+       )
+       SELECT r.pos_group, r.forecast_season, r.starter_value,
+              r.competition + coalesce(i.competition, 0) AS competition
+       FROM returners r LEFT JOIN recruits i USING (pos_group)`, [team],
+    ),
   ]);
 
   // Entrants lack a precomputed quality score; mirror the pipeline's formula using portal-rating rank within the year.
@@ -120,9 +167,11 @@ export async function getPortalBoard(
   const confBy = new Map(confs.map((c) => [c.school, c.conference]));
   const teamConf = confBy.get(team);
   const teamState = loc[0]?.state;
+  const budgetByTeam = new Map(budgets.map((row) => [row.team, Number(row.budget)]));
+  const roomByGroup = new Map(rooms.map((row) => [row.pos_group, row]));
 
   const candidates = [...rows, ...watch]
-    .filter((r) => r.current_team !== team)
+    .filter((r) => athleteId !== undefined || r.current_team !== team)
     .map((r, i) => {
       const sameConf = teamConf !== undefined && confBy.get(r.current_team ?? "") === teamConf ? 1 : 0;
       const inState = teamState && r.home_state === teamState ? 1 : 0;
@@ -132,6 +181,14 @@ export async function getPortalBoard(
         need: needBy.get(r.pos_group ?? "") ?? 0, fit,
       } as Candidate;
       c.default_score = scoreCandidate(c, DEFAULT_WEIGHTS);
+      const room = roomByGroup.get(c.pos_group ?? "");
+      if (year === latestYear && room && Number(c.forecast_season) === Number(room.forecast_season)) {
+        Object.assign(c, estimateSigningNIL(c, {
+          team, season: Number(room.forecast_season), budget: budgetByTeam.get(team) ?? 0,
+          sourceBudget: budgetByTeam.get(c.current_team ?? "") ?? 0,
+          starterValue: Number(room.starter_value), competition: Number(room.competition),
+        }));
+      }
       return c;
     })
     .sort((a, b) => b.default_score - a.default_score)

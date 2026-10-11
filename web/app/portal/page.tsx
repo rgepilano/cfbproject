@@ -48,7 +48,8 @@ export default async function PortalPage({ searchParams }: { searchParams: Searc
           </Link>
         ))}
       </div>
-      <PortalBoard key={year} candidates={candidates} groups={POSITION_GROUPS} season={year} />
+      <PortalBoard key={`${team}:${year}:score-desc`} candidates={candidates} groups={POSITION_GROUPS} season={year} team={team}
+        initialSource={year === years[0] ? "Watch list (high transfer risk)" : ""} />
     </>
   );
 }

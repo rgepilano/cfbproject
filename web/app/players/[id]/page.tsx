@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
 import { Badge, Card, Empty, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
-import { sql } from "@/lib/db";
-import { money, name, nilChange, num, pct } from "@/lib/util";
+import { getTeams, sql } from "@/lib/db";
+import { getPortalBoard } from "@/lib/portal";
+import { DEFAULT_TEAM, money, name, nilChange, num, pct } from "@/lib/util";
+import { cookies } from "next/headers";
+import { getSessionUsername, SESSION_COOKIE } from "@/lib/session";
+import { getUserDefaultTeam } from "@/lib/users";
 
 type Row = Record<string, string | number | null>;
 
@@ -36,6 +40,15 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
   const n = nil[nil.length - 1];
   const nilBySeason = new Map(nil.map((x) => [String(x.season), x]));
   const displayName = name(r ?? (await firstName(id)));
+  const [teams, username] = await Promise.all([
+    getTeams(), getSessionUsername((await cookies()).get(SESSION_COOKIE)?.value),
+  ]);
+  const preferredTeam = username ? getUserDefaultTeam(username) : null;
+  const defaultTeam = teams.find((team) => team.toLowerCase() === (preferredTeam ?? DEFAULT_TEAM).toLowerCase()) ?? DEFAULT_TEAM;
+  const atDefaultTeam = String(r?.team ?? latest.team).toLowerCase() === defaultTeam.toLowerCase();
+  const signing = r?.nil_forecast != null && !atDefaultTeam
+    ? (await getPortalBoard(defaultTeam, undefined, undefined, id)).candidates[0]
+    : undefined;
 
   return (
     <>
@@ -104,6 +117,16 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
             <div className="text-sm text-slate-500">NIL change {nilChange(r.nil_forecast, r.nil_value)} · Return probability {pct(r.return_probability)}</div>
           </div>
           <p className="mt-2 text-xs text-slate-500">{r.nil_forecast_drivers}</p>
+        </Card>
+      )}
+
+      {r?.nil_forecast != null && (
+        <Card title={`${r.forecast_season} NIL estimate at ${defaultTeam}`}>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+            <div className="text-2xl font-bold">{money(atDefaultTeam ? r.nil_forecast : signing?.signing_nil_estimate)}</div>
+            <div className="text-sm text-slate-500">NIL change {nilChange(atDefaultTeam ? r.nil_forecast : signing?.signing_nil_estimate, r.nil_value)}</div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{atDefaultTeam ? r.nil_forecast_drivers : signing?.signing_nil_drivers ?? "Estimate unavailable for this position or team budget."}</p>
         </Card>
       )}
 
