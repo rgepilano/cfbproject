@@ -24,6 +24,16 @@ export function pct(v: unknown, digits = 0): string {
   return Number.isFinite(n) ? `${(100 * n).toFixed(digits)}%` : "—";
 }
 
+export function nilChange(forecast: unknown, current: unknown): string {
+  if (forecast === null || forecast === undefined || forecast === "" || Number(current) <= 0) return "—";
+  const change = (Number(forecast) / Number(current) - 1) * 100;
+  if (!Number.isFinite(change)) return "—";
+  const rounded = Number(change.toFixed(1));
+  const amount = Number(forecast) - Number(current);
+  const sign = amount > 0 ? "+" : amount < 0 ? "-" : "";
+  return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}% (${sign}${money(Math.abs(amount))})`;
+}
+
 export function money(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);

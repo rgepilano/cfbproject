@@ -2,7 +2,7 @@ import { ParamSelect } from "@/components/ParamSelect";
 import { Badge, Card, PlayerLink, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
 import { getTeams, sql, getTeamNIL } from "@/lib/db";
-import { DEFAULT_TEAM, money, name, num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
+import { DEFAULT_TEAM, money, name, nilChange, num, param, pct, pick, POSITION_GROUPS, qs, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
 import { getUserDefaultTeam } from "@/lib/users";
@@ -79,7 +79,7 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
               <Th href={qs(base, { sort: "value" })} active={sort === "value"}>Value</Th>
               <Th href={qs(base, { sort: "nil" })} active={sort === "nil"}>Est. NIL</Th>
               <Th href={qs(base, { sort: "forecast" })} active={sort === "forecast"}>{rows.find((r) => r.forecast_season)?.forecast_season ?? "Next season"} NIL estimate</Th>
-              <Th>Expected returning cost</Th>
+              <Th>NIL change</Th>
               <Th href={qs(base, { sort: "transfer" })} active={sort === "transfer"}>Transfer</Th>
               <Th href={qs(base, { sort: "nfl" })} active={sort === "nfl"}>NFL</Th>
               <Th href={qs(base, { sort: "leave" })} active={sort === "leave"}>Leave</Th>
@@ -101,7 +101,7 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
                 <Td>{pct(r.player_value)}</Td>
                 <Td><span title={String(r.nil_drivers ?? "")}>{money(r.nil_value)}</span></Td>
                 <Td><span title={String(r.nil_forecast_drivers ?? "")}>{money(r.nil_forecast)}</span></Td>
-                <Td>{money(r.expected_returning_nil)}</Td>
+                <Td>{nilChange(r.nil_forecast, r.nil_value)}</Td>
                 <Td>{r.transfer_tier ? <Badge>{r.transfer_tier}</Badge> : null} {num(r.transfer_risk, 0)}</Td>
                 <Td>{r.nfl_tier ? <Badge>{r.nfl_tier}</Badge> : "—"} {r.nfl_risk !== null ? num(r.nfl_risk, 0) : ""}</Td>
                 <Td>{num(r.leave_risk, 0)}</Td>
