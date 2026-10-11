@@ -8,12 +8,17 @@ import { money } from "@/lib/util";
 export default function WatchlistPage() {
   const { items, remove } = useWatchlist();
   const [nil, setNil] = useState<Record<string, number | null>>({});
+  const [forecast, setForecast] = useState<Record<string, { nil_forecast: number; forecast_season: number; nil_forecast_drivers: string }>>({});
   const playerIds = items.filter((i) => i.kind === "player").map((i) => i.id).join(",");
   useEffect(() => {
     if (!playerIds) return;
     fetch(`/api/nil?ids=${encodeURIComponent(playerIds)}`)
       .then((r) => (r.ok ? r.json() : {}))
       .then(setNil)
+      .catch(() => {});
+    fetch(`/api/nil?forecast=1&ids=${encodeURIComponent(playerIds)}`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then(setForecast)
       .catch(() => {});
   }, [playerIds]);
   const groups = [
@@ -38,6 +43,9 @@ export default function WatchlistPage() {
                     {i.sub && <span className="ml-2 text-slate-500">{i.sub}</span>}
                     {i.kind === "player" && i.id in nil && (
                       <span className="ml-2 text-slate-500">· Est. NIL {money(nil[i.id])}</span>
+                    )}
+                    {i.kind === "player" && forecast[i.id] && (
+                      <span className="ml-2 text-slate-500" title={forecast[i.id].nil_forecast_drivers}>· {forecast[i.id].forecast_season} NIL estimate {money(forecast[i.id].nil_forecast)}</span>
                     )}
                   </span>
                   <button className="text-xs text-red-600" onClick={() => remove(i.key)}>Remove</button>

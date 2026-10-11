@@ -8,6 +8,13 @@ export async function GET(request: Request) {
     .filter((s) => /^\d{1,12}$/.test(s))
     .slice(0, 500);
   if (ids.length === 0) return NextResponse.json({});
+  if (new URL(request.url).searchParams.get("forecast") === "1") {
+    const forecasts = await sql<{ athlete_id: string; nil_forecast: number; forecast_season: number; nil_forecast_drivers: string }>(
+      `SELECT athlete_id::text AS athlete_id, nil_forecast, forecast_season, nil_forecast_drivers
+       FROM analytics.player_nil_forecast WHERE athlete_id::text = ANY($1::text[])`, [ids],
+    );
+    return NextResponse.json(Object.fromEntries(forecasts.map((row) => [row.athlete_id, row])));
+  }
   const rows = await sql<{ athlete_id: string; nil_value: number | null }>(
     `SELECT DISTINCT ON (athlete_id) athlete_id::text AS athlete_id, nil_value
      FROM analytics.player_nil WHERE athlete_id::text = ANY($1::text[]) ORDER BY athlete_id, season DESC`,

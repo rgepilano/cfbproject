@@ -48,7 +48,7 @@ export default async function PortalPage({ searchParams }: { searchParams: Searc
           </Link>
         ))}
       </div>
-      <PortalBoard key={year} candidates={candidates} groups={POSITION_GROUPS} />
+      <PortalBoard key={year} candidates={candidates} groups={POSITION_GROUPS} season={year} />
     </>
   );
 }

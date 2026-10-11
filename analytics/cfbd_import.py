@@ -1,13 +1,15 @@
 """Import data from the CollegeFootballData API into the analytics schema (ing stays untouched).
 
-Usage: python cfbd_import.py [--rosters]
+Usage: python cfbd_import.py [--rosters] | --stats-year 2026
 Requires CFBD_API_KEY in .env.
 """
+import argparse
 import json
 import os
 import sys
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -17,6 +19,38 @@ API = "https://api.collegefootballdata.com"
 DRAFT_YEARS = range(2020, 2027)
 HISTORICAL_ROSTER_YEARS = range(2021, 2024)
 TEAM_YEAR = 2026
+
+
+def prepare_season_stats(rows: list[dict], year: int) -> pd.DataFrame:
+    if not rows:
+        raise ValueError(f"Empty stats response for {year}; previous snapshot retained")
+    frame = pd.DataFrame(rows)
+    required = ["season", "playerId", "team", "position", "category", "statType", "stat"]
+    if not set(required).issubset(frame.columns):
+        raise ValueError("Stats response is missing required fields")
+    frame = frame[required].rename(columns={"playerId": "athlete_id", "statType": "stat_type"})
+    for column in ["season", "athlete_id", "stat"]:
+        frame[column] = pd.to_numeric(frame[column], errors="raise")
+    if frame.isna().any().any() or not frame.season.eq(year).all():
+        raise ValueError("Stats response contains null fields or an unexpected season")
+    frame = frame.astype({"season": "int64", "athlete_id": "int64", "stat": "float64"})
+    frame = frame.drop_duplicates()
+    keys = ["season", "athlete_id", "team", "category", "stat_type"]
+    if frame.duplicated(keys).any():
+        raise ValueError("Conflicting duplicate season totals; previous snapshot retained")
+    frame["fetched_at"] = datetime.now(timezone.utc)
+    frame["source"] = "/stats/player/season?seasonType=regular"
+    return frame.reset_index(drop=True)
+
+
+def import_season_stats(year: int) -> None:
+    if not 1900 <= year <= 2100:
+        raise ValueError("Stats year must be between 1900 and 2100")
+    frame = prepare_season_stats(get("/stats/player/season", year=year, seasonType="regular"), year)
+    table = f"cfbd_player_stats_{year}"
+    write_table(frame, table, indexes=[["athlete_id", "season"], ["season", "team"]])
+    print(f"{table}: {len(frame)} stat rows, {frame.athlete_id.nunique()} players; "
+          f"fetched_at={frame.fetched_at.iloc[0].isoformat()}")
 
 
 def get(path: str, **params) -> list[dict]:
@@ -74,7 +108,14 @@ def import_historical_rosters() -> None:
 
 
 if __name__ == "__main__":
-    import_team_locations()
-    import_draft_picks()
-    if "--rosters" in sys.argv:
-        import_historical_rosters()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--rosters", action="store_true")
+    parser.add_argument("--stats-year", type=int)
+    args = parser.parse_args()
+    if args.stats_year is not None:
+        import_season_stats(args.stats_year)
+    else:
+        import_team_locations()
+        import_draft_picks()
+        if args.rosters:
+            import_historical_rosters()

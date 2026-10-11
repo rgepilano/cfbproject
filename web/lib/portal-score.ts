@@ -17,6 +17,9 @@ export type Candidate = {
   portal_stars: number | null;
   transfer_risk: number | null;
   nil_value: number | null;
+  nil_forecast?: number | null;
+  forecast_season?: number | null;
+  nil_forecast_drivers?: string | null;
   seasons_left_est: number | null;
   home_state: string | null;
   quality: number;

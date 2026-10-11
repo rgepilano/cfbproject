@@ -12,6 +12,7 @@ type Row = {
   departures_eligibility: number; at_risk_players: number; incoming_recruits: number; projected_players: number;
   target_players: number; projected_value: number; target_value: number; player_gap: number; need_score: number;
   estimated_nil_cost: number | null; estimated_nil_share: number | null; total_estimated_nil: number | null;
+  expected_returning_nil: number | null; total_returning_nil: number | null;
 };
 
 export default async function PipelinePage({ searchParams }: { searchParams: SearchParams }) {
@@ -29,26 +30,10 @@ export default async function PipelinePage({ searchParams }: { searchParams: Sea
   const horizon = pick(param(sp, "h"), ["1", "2", "3"] as const, "1");
 
   const rows = await sql<Row>(
-    `WITH latest_nil AS (
-       SELECT max(season) AS season FROM analytics.player_nil WHERE team = $1
-     ), group_nil AS (
-       SELECT pos_group, avg(nil_value)::double precision AS avg_nil
-       FROM analytics.player_nil
-       WHERE team = $1 AND season = (SELECT season FROM latest_nil)
-       GROUP BY pos_group
-     ), team_nil AS (
-       SELECT avg(nil_value)::double precision AS avg_nil
-       FROM analytics.player_nil
-       WHERE team = $1 AND season = (SELECT season FROM latest_nil)
-     ), forecast AS (
-       SELECT rp.*, coalesce(group_nil.avg_nil, team_nil.avg_nil) * rp.projected_players AS estimated_nil_cost
-       FROM analytics.roster_pipeline rp
-       LEFT JOIN group_nil USING (pos_group)
-       CROSS JOIN team_nil
-       WHERE rp.team = $1 AND rp.horizon = $2
-     ), totals AS (
-       SELECT forecast.*, sum(estimated_nil_cost) OVER () AS total_estimated_nil
-       FROM forecast
+    `WITH totals AS (
+       SELECT rp.*, sum(estimated_nil_cost) OVER () AS total_estimated_nil,
+              sum(expected_returning_nil) OVER () AS total_returning_nil
+       FROM analytics.roster_pipeline rp WHERE team = $1 AND horizon = $2
      )
      SELECT *, estimated_nil_cost / nullif(total_estimated_nil, 0) AS estimated_nil_share
      FROM totals ORDER BY need_score DESC, pos_group`,
@@ -66,7 +51,6 @@ export default async function PipelinePage({ searchParams }: { searchParams: Sea
           <p className="text-sm text-slate-500">
             Expected roster by position for {season ?? "—"}: returning players weighted by (1 − departure probability),
             plus committed recruits. Targets are the FBS median headcount and 75th-percentile room value.
-            NIL costs carry forward the latest per-player position averages, scaled to projected headcount.
           </p>
           <p className="text-sm font-medium text-slate-700">
             Projected NIL cost for {season ?? "—"}: {money(rows[0]?.total_estimated_nil)}
@@ -91,7 +75,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Sea
             <tr>
               <Th>Group</Th><Th>Now</Th><Th>Out of elig.</Th><Th>At risk</Th><Th>Returning</Th><Th>Incoming</Th>
               <Th>Projected</Th><Th>Target</Th><Th>Gap</Th><Th>Value vs target</Th><Th>Need</Th>
-              <Th>Est. NIL cost</Th><Th>NIL %</Th>
+              <Th>Expected returning NIL</Th><Th>Est. NIL cost</Th><Th>NIL %</Th>
             </tr>
           </thead>
           <tbody>
@@ -111,6 +95,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Sea
                     color={Number(r.projected_value) >= Number(r.target_value) ? "bg-green-500" : "bg-amber-500"} />
                 </Td>
                 <Td className="font-semibold">{num(r.need_score, 0)}</Td>
+                <Td>{money(r.expected_returning_nil)}</Td>
                 <Td>{money(r.estimated_nil_cost)}</Td>
                 <Td>{pct(r.estimated_nil_share)}</Td>
               </tr>
@@ -119,6 +104,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Sea
           <tfoot>
             <tr className="border-t-2 border-slate-300 font-semibold dark:border-slate-700">
               <td colSpan={11} className="px-2 py-2 text-sm">Projected NIL total · {season ?? "—"}</td>
+              <Td>{money(rows[0]?.total_returning_nil)}</Td>
               <Td>{money(rows[0]?.total_estimated_nil)}</Td>
               <Td>{rows.length ? pct(1) : "—"}</Td>
             </tr>

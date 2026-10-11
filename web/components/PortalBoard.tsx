@@ -17,7 +17,7 @@ function fmtPct(v: number | null) {
   return v === null || v === undefined ? "—" : `${Math.round(100 * Number(v))}%`;
 }
 
-export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; groups: string[] }) {
+export function PortalBoard({ candidates, groups, season }: { candidates: Candidate[]; groups: string[]; season?: string }) {
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [group, setGroup] = useState("");
   const [source, setSource] = useState("");
@@ -65,7 +65,7 @@ export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; g
         <table className="min-w-full text-sm">
           <thead className="text-left text-xs uppercase text-slate-500">
             <tr>
-              {["#", "Player", "Pos", "From", "Source", "Score", "Quality", "Need", "Elig.", "Fit", "Production", "Usage", "Transfer risk", "Est. NIL"].map((h) => (
+              {["#", "Player", "Pos", "From", "Source", "Score", "Quality", "Need", "Elig.", "Fit", "Production", "Usage", "Transfer risk", season ? `${season} NIL estimate` : "Est. NIL", `${candidates.find((c) => c.forecast_season)?.forecast_season ?? "Next season"} NIL estimate`].map((h) => (
                 <th key={h} className="px-2 py-2">{h}</th>
               ))}
             </tr>
@@ -95,6 +95,7 @@ export function PortalBoard({ candidates, groups }: { candidates: Candidate[]; g
                 <td className="px-2 py-1.5">{fmtPct(c.usage_share)}</td>
                 <td className="px-2 py-1.5">{c.transfer_risk ?? "—"}</td>
                 <td className="px-2 py-1.5">{money(c.nil_value)}</td>
+                <td className="px-2 py-1.5" title={c.nil_forecast_drivers ?? ""}>{money(c.nil_forecast)}</td>
               </tr>
             ))}
           </tbody>

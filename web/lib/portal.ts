@@ -43,6 +43,7 @@ type Raw = {
   pos_group?: string | null; current_team: string | null; class_year: number | null;
   production_pct: number | null; usage_share: number | null; usage_pct?: number | null; rating_pct?: number | null;
   portal_rating: number | null; portal_stars: number | null; transfer_risk: number | null; nil_value: number | null;
+  nil_forecast?: number | null; forecast_season?: number | null; nil_forecast_drivers?: string | null;
   seasons_left_est: number | null; home_state: string | null;
   destination?: string | null; source?: string; quality?: number; eligibility_score?: number;
 };
@@ -62,19 +63,22 @@ export async function getPortalBoard(
       `SELECT pe.athlete_id::text AS athlete_id, pe.first_name, pe.last_name, pe.position, pe.origin AS current_team,
               pe.destination, pe.rating AS portal_rating, pe.stars AS portal_stars,
               ps.class_year, ps.production_pct, ps.usage_share, ps.usage_pct, ps.rating_pct, ps.seasons_left_est, ps.home_state,
-              dr.transfer_risk, n.nil_value
+              dr.transfer_risk, n.nil_value,
+              CASE WHEN pe.season = $2 THEN dr.nil_forecast END AS nil_forecast,
+              CASE WHEN pe.season = $2 THEN dr.forecast_season END AS forecast_season,
+              CASE WHEN pe.season = $2 THEN dr.nil_forecast_drivers END AS nil_forecast_drivers
        FROM analytics.portal_entry pe
        LEFT JOIN analytics.player_season ps ON ps.athlete_id = pe.athlete_id AND ps.season = pe.season - 1
        LEFT JOIN analytics.departure_risk dr ON dr.athlete_id = pe.athlete_id
-       LEFT JOIN analytics.player_nil n ON n.athlete_id = pe.athlete_id AND n.season = pe.season - 1
+      LEFT JOIN analytics.player_nil n ON n.athlete_id = pe.athlete_id AND n.season = pe.season
        WHERE pe.season = $1 AND coalesce(pe.eligibility, '') <> 'Withdrawn'`,
-      [Number(year)],
+      [Number(year), Number(latestYear)],
     ),
     year === latestYear
       ? sql<Raw>(
           `SELECT athlete_id::text AS athlete_id, first_name, last_name, position, pos_group, current_team, class_year,
                   production_pct, usage_share, portal_rating, portal_stars, transfer_risk, seasons_left_est, home_state,
-                  quality, eligibility_score, nil_value, source
+                  quality, eligibility_score, nil_value, source, nil_forecast, forecast_season, nil_forecast_drivers
            FROM analytics.portal_candidate WHERE source LIKE 'Watch%'`,
         )
       : Promise.resolve([] as Raw[]),

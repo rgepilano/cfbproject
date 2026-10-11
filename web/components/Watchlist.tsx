@@ -40,7 +40,31 @@ function read(): WatchItem[] {
 }
 
 function write(items: WatchItem[]) {
+  if (authed) {
+    const before = new Set(cache.items.map((i) => i.key));
+    const after = new Set(items.map((i) => i.key));
+    const added = items.filter((i) => !before.has(i.key));
+    if (added.length) void fetch("/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: added }) }).catch(() => {});
+    for (const k of before) if (!after.has(k)) void fetch(`/api/watchlist?key=${encodeURIComponent(k)}`, { method: "DELETE" }).catch(() => {});
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  listeners.forEach((l) => l());
+}
+
+let authed = false;
+
+// Server is the source of truth for logged-in users; local items are uploaded once if the server list is empty.
+async function syncFromServer() {
+  const res = await fetch("/api/watchlist");
+  if (!res.ok) return;
+  const server: WatchItem[] = (await res.json()).items ?? [];
+  const local = read();
+  if (server.length === 0 && local.length > 0) {
+    await fetch("/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: local }) });
+  } else {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(server));
+  }
+  authed = true;
   listeners.forEach((l) => l());
 }
 
@@ -103,7 +127,10 @@ function ReactTryInit() {
       const res = await fetch("/api/me");
       if (!res.ok) return;
       const data = await res.json();
-      if (data?.username) setWatchlistKeyForUser(String(data.username));
+      if (data?.username) {
+        setWatchlistKeyForUser(String(data.username));
+        await syncFromServer();
+      }
     } catch {
       // ignore
     }

@@ -33,7 +33,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
     ),
     sql<Row>(
       `SELECT athlete_id, first_name, last_name, pos_group, class_year, transfer_risk, transfer_tier, nfl_risk,
-              retention_priority, transfer_drivers, nil_value
+              retention_priority, transfer_drivers, nil_value, nil_forecast, nil_forecast_drivers, forecast_season
        FROM analytics.departure_risk WHERE team = $1 AND graduating = 0
        ORDER BY retention_priority DESC NULLS LAST LIMIT 8`,
       [team],
@@ -78,7 +78,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
 
         <Card title="Top retention priorities" action={<Link className="text-sm text-blue-600" href={`/retention${q}`}>Retention →</Link>}>
           <Table>
-            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>Transfer</Th><Th>NFL</Th><Th>Est. NIL</Th><Th>Priority</Th></tr></thead>
+            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>Transfer</Th><Th>NFL</Th><Th>Est. NIL</Th><Th>{retain.find((r) => r.forecast_season)?.forecast_season ?? "Next season"} NIL estimate</Th><Th>Priority</Th></tr></thead>
             <tbody>
               {retain.map((r) => (
                 <tr key={String(r.athlete_id)} title={String(r.transfer_drivers ?? "")}>
@@ -87,6 +87,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
                   <Td><Badge>{r.transfer_tier}</Badge> {num(r.transfer_risk, 0)}</Td>
                   <Td>{num(r.nfl_risk, 0)}</Td>
                   <Td>{money(r.nil_value)}</Td>
+                  <Td><span title={String(r.nil_forecast_drivers ?? "")}>{money(r.nil_forecast)}</span></Td>
                   <Td className="font-semibold">{num(r.retention_priority)}</Td>
                 </tr>
               ))}
@@ -115,13 +116,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
 
         <Card title="Top portal fits" action={<Link className="text-sm text-blue-600" href={`/portal${q}`}>Portal board →</Link>}>
           <Table>
-            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>From</Th><Th>Quality</Th><Th>Need</Th><Th>Est. NIL</Th><Th>Score</Th></tr></thead>
+            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>From</Th><Th>Quality</Th><Th>Need</Th><Th>Est. NIL</Th><Th>{portal.candidates.find((c) => c.forecast_season)?.forecast_season ?? "Next season"} NIL estimate</Th><Th>Score</Th></tr></thead>
             <tbody>
               {portal.candidates.slice(0, 8).map((c) => (
                 <tr key={c.candidate_id}>
                   <Td><PlayerLink id={c.athlete_id}>{name(c)}</PlayerLink></Td>
                   <Td>{c.pos_group}</Td><Td>{c.current_team}</Td>
                   <Td>{pct(c.quality)}</Td><Td>{num(100 * c.need, 0)}</Td><Td>{money(c.nil_value)}</Td>
+                  <Td><span title={c.nil_forecast_drivers ?? ""}>{money(c.nil_forecast)}</span></Td>
                   <Td className="font-semibold">{num(c.default_score, 1)}</Td>
                 </tr>
               ))}

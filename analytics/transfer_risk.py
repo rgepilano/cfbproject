@@ -151,16 +151,31 @@ def train_seasons(seasons) -> list[int]:
     return sorted(int(s) for s in set(seasons) if FIRST_STATS_SEASON <= s < VALID_SEASON)
 
 
+def load_stats() -> pd.DataFrame:
+    snapshot = f"cfbd_player_stats_{SCORE_SEASON}"
+    has_snapshot = table_exists(snapshot)
+    snapshot_sql = f"""
+        UNION ALL
+        SELECT athlete_id, season, team, max(position) AS stat_position,
+               category || '.' || stat_type AS metric, sum(stat) AS value
+        FROM analytics.{snapshot}
+        WHERE category || '.' || stat_type = ANY(%(metrics)s)
+        GROUP BY 1, 2, 3, 5
+    """ if has_snapshot else ""
+    return query("""
+        SELECT "playerId" AS athlete_id, season, team, max(position) AS stat_position,
+               category || '.' || "statType" AS metric, sum(stat) AS value
+        FROM ing.stats
+        WHERE "playerId" IS NOT NULL AND category || '.' || "statType" = ANY(%(metrics)s)
+          AND (NOT %(has_snapshot)s OR season <> %(snapshot_season)s)
+        GROUP BY 1, 2, 3, 5
+    """ + snapshot_sql, {"metrics": METRICS, "has_snapshot": has_snapshot, "snapshot_season": SCORE_SEASON})
+
+
 def load_data() -> dict[str, pd.DataFrame]:
     return {
         "roster": load_roster(),
-        "stats": query("""
-            SELECT "playerId" AS athlete_id, season, team, max(position) AS stat_position,
-                   category || '.' || "statType" AS metric, sum(stat) AS value
-            FROM ing.stats
-            WHERE "playerId" IS NOT NULL AND category || '.' || "statType" = ANY(%(metrics)s)
-            GROUP BY 1, 2, 3, 5
-        """, {"metrics": METRICS}),
+        "stats": load_stats(),
         "recruits": query("""
             SELECT id AS recruit_id, "athleteId" AS athlete_id, year AS recruit_year,
                    stars, rating, position, "committedTo" AS committed_to

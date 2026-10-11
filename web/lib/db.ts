@@ -55,6 +55,26 @@ export async function sql<T = Record<string, unknown>>(text: string, params: unk
   return res.rows as T[];
 }
 
+// Separate login for the one writable table (web.watchlist); the main pool stays read-only.
+const globalForWritePool = globalThis as unknown as { pgWritePool?: Pool };
+
+export async function sqlWrite<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+  if (!globalForWritePool.pgWritePool) {
+    const base = getPool().options;
+    globalForWritePool.pgWritePool = new Pool({
+      host: base.host,
+      port: base.port,
+      database: base.database,
+      ssl: base.ssl,
+      user: process.env.PGWATCH_USER ?? process.env.PGUSER,
+      password: process.env.PGWATCH_PASSWORD ?? process.env.PGPASSWORD,
+      max: 2,
+    });
+  }
+  const res = await globalForWritePool.pgWritePool.query(text, params);
+  return res.rows as T[];
+}
+
 export async function tableExists(name: string): Promise<boolean> {
   const rows = await sql<{ ok: boolean }>("SELECT to_regclass($1) IS NOT NULL AS ok", [`analytics.${name}`]);
   return rows[0]?.ok ?? false;

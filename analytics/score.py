@@ -1,6 +1,6 @@
 """Run every model and publish results to the analytics schema (and CSVs in analytics/output).
 
-Usage: python score.py [--no-db]
+Usage: python score.py [--no-db] [--refresh-stats]
 """
 import json
 import sys
@@ -14,6 +14,7 @@ import nil_value
 import pipeline
 import recruit_projection
 import transfer_risk
+from cfbd_import import import_season_stats
 from db import execute, query, table_exists, write_table
 from transfer_risk import OUTPUT_DIR, SCORE_SEASON
 
@@ -76,6 +77,9 @@ def log_model_runs(run_id: str, metrics: dict[str, dict]) -> None:
 
 def main() -> None:
     to_db = "--no-db" not in sys.argv
+    if "--refresh-stats" in sys.argv:
+        print(f"Refreshing {SCORE_SEASON} season stats...")
+        import_season_stats(SCORE_SEASON)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:6]
     OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -92,14 +96,27 @@ def main() -> None:
     risk = pipeline.departure_risk(f, tr["scores"], nfl["scores"], rp["scores"])
     risk = risk.merge(nil_scores[["athlete_id", "season", "nil_value", "nil_drivers"]],
                       on=["athlete_id", "season"], how="left")
+    nil_forecast = nil_value.forecast_returners(f, risk, nil_scores, pools, nil["metrics"]["concentration"], rp["scores"])
+    forecast_cols = ["athlete_id", "forecast_season", "nil_forecast", "return_probability",
+                     "expected_returning_nil", "nil_forecast_drivers"]
+    risk = risk.merge(nil_forecast[forecast_cols], on="athlete_id", how="left", validate="one_to_one")
     pipe = pipeline.roster_pipeline(risk, rp["scores"])
+    pipe = nil_value.forecast_roster_costs(pipe, nil_forecast, nil_scores, rp["scores"])
     candidates = pipeline.portal_candidates(f, risk, d["portal"], extras["departures"])
     latest_nil = nil_scores.sort_values("season").drop_duplicates("athlete_id", keep="last")
     candidates["nil_value"] = candidates.athlete_id.map(latest_nil.set_index("athlete_id").nil_value)
+    for column in forecast_cols[1:]:
+        candidates[column] = candidates.athlete_id.map(nil_forecast.set_index("athlete_id")[column])
     dq = data_quality(d, extras)
 
     metrics = {"transfer_risk": tr["metrics"], "nfl_risk": nfl["metrics"], "recruit_projection": rp["metrics"],
                "nil_value": nil["metrics"]}
+    metrics["nil_value"]["forecast"] = {
+        "season": SCORE_SEASON + 1, "players": len(nil_forecast),
+        "method": "current NIL anchor plus explicit inflation and bounded performance, opportunity and market adjustments; allocation fallback",
+        "inflation_rate": nil_value.FORECAST_INFLATION_RATE,
+        "assumptions": "same team; forecasts not constrained to team budget; inflation is an assumption; usage is not snaps; no contract labels",
+    }
     metrics["transfer_risk"]["score_summary"] = summarize(tr["scores"].transfer_prob)
     metrics["nfl_risk"]["score_summary"] = summarize(nfl["scores"].nfl_prob)
     metrics["recruit_projection"]["score_summary"] = summarize(rp["scores"].p_impact)
@@ -119,7 +136,7 @@ def main() -> None:
                  "transfer_tier", "transfer_baseline", "transfer_drivers", "nfl_prob", "nfl_risk", "nfl_tier",
                  "nfl_drivers", "leave_prob", "leave_risk", "comparable_teammates", "incoming_strong_recruits",
                  "scarcity", "retention_priority", "retention_rank", "usage_share", "production_pct", "stars",
-                 "rating", "nil_value", "nil_drivers"]
+                 "rating", "nil_value", "nil_drivers"] + forecast_cols[1:]
     recruit_cols = recruit_projection.OUT_COLS + ["athlete_id"]
     portal = d["portal"].reset_index(drop=True).rename_axis("portal_row").reset_index()
     portal = portal.merge(extras["departures"][["portal_row", "athlete_id", "match"]], on="portal_row", how="left")
@@ -133,6 +150,8 @@ def main() -> None:
         "team_season": (extras["team_season"].merge(pools, on=["team", "season"], how="left"), [["team", "season"]]),
         "player_nil": (nil_scores.assign(run_id=run_id, scored_at=scored_at),
                        [["athlete_id", "season"], ["team", "season"]]),
+        "player_nil_forecast": (nil_forecast.assign(run_id=run_id, scored_at=scored_at),
+                    [["athlete_id"], ["team", "forecast_season"]]),
         "portal_entry": (portal, [["season"], ["athlete_id"]]),
         "departure_risk": (risk[risk_cols].assign(run_id=run_id, scored_at=scored_at),
                            [["team"], ["athlete_id"], ["retention_priority"]]),

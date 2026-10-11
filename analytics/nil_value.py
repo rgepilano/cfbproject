@@ -22,6 +22,7 @@ TRANSFER_PREMIUM = 0.10
 # Players with no prior-season role are credited a discounted share of their pedigree on the field.
 UNPROVEN_DISCOUNT = 0.6
 DEFAULT_CONCENTRATION = 5.0
+FORECAST_INFLATION_RATE = 0.05
 CONCENTRATION_GRID = np.arange(1.0, 15.01, 0.5)
 
 COMPONENT_LABELS = {
@@ -179,6 +180,126 @@ def run(f: pd.DataFrame, arrivals: pd.DataFrame, portal: pd.DataFrame, pools: pd
         if len(current) else None,
     }
     return {"scores": x[OUT_COLS], "metrics": metrics}
+
+
+def forecast_returners(f: pd.DataFrame, risk: pd.DataFrame, scores: pd.DataFrame,
+                       pools: pd.DataFrame, concentration: float,
+                       recruits: pd.DataFrame | None = None,
+                       inflation_rate: float = FORECAST_INFLATION_RATE) -> pd.DataFrame:
+    if not np.isfinite(inflation_rate) or not 0 <= inflation_rate <= 0.25:
+        raise ValueError("Forecast inflation must be between 0 and 25%")
+    current = f[f.season == SCORE_SEASON].copy()
+    current = current.merge(risk[["athlete_id", "graduating", "leave_prob"]], on="athlete_id", validate="one_to_one")
+    history = pools.sort_values(["team", "season"]).copy()
+    history["previous_season"] = history.groupby("team").season.shift()
+    history["growth"] = history.groupby("team").nil_amt.pct_change(fill_method=None)
+    history = history[(history.season - history.previous_season == 1) & np.isfinite(history.growth)]
+    budget_growth = history.groupby("team").growth.median().clip(-0.20, 0.25)
+    latest = pools.sort_values("season").drop_duplicates("team", keep="last").set_index("team").nil_amt
+    market = scores.groupby(["group", "season"]).nil_value.median().reset_index().sort_values(["group", "season"])
+    market["previous_season"] = market.groupby("group").season.shift()
+    market["growth"] = market.groupby("group").nil_value.pct_change(fill_method=None)
+    market = market[(market.season - market.previous_season == 1) & np.isfinite(market.growth)]
+    position_growth = (0.5 * market.groupby("group").growth.median()).clip(-0.20, 0.25)
+    current["budget_growth"] = current.team.map(budget_growth).fillna(0)
+    current["position_growth"] = current.group.map(position_growth).fillna(0)
+    current["team_nil_pool"] = current.team.map(latest) * (1 + current.budget_growth)
+    current = current[current.team_nil_pool.notna()].copy()
+    pedigree = current.rating_pct.where(current.rating.notna(), 0).fillna(0)
+    eligible = (current.graduating == 0) & (current.seasons_left_est >= 1)
+    room_keys = [current.team, current.group]
+    usage = current.usage_share.fillna(0).clip(0, 1)
+    departure = current.leave_prob.fillna(0).clip(0, 1).where(eligible, 1)
+    vacated = usage * departure
+    room_vacated = vacated.groupby(room_keys).transform("sum")
+    claim = (0.6 * usage + 0.4 * pedigree + 0.1).where(eligible, 0)
+    room_claim = claim.groupby(room_keys).transform("sum")
+    incoming_claim = pd.Series(0.0, index=current.index)
+    if recruits is not None:
+        incoming = recruits.dropna(subset=["committed_to"]).copy()
+        incoming["claim"] = 0.3 * incoming.success_score.fillna(0).clip(0, 100) / 100
+        competition = incoming.groupby(["committed_to", "group"]).claim.sum()
+        incoming_claim = pd.Series(
+            [competition.get((team, group), 0.0) for team, group in zip(current.team, current.group)],
+            index=current.index)
+    denominator = (room_claim - claim + incoming_claim).clip(lower=0) + claim
+    current["opportunity_gain"] = ((room_vacated - vacated).clip(lower=0)
+                                   * claim / denominator.where(denominator > 0, 1)).clip(0, 1)
+    current["projected_usage_share"] = (usage + current.opportunity_gain).clip(0, 1)
+    played = current.group.isin(STAT_GROUPS) & (current.projected_usage_share > 0)
+    usage_rank = current.projected_usage_share.where(played).groupby(current.group).rank(pct=True)
+    projected_playing_time = 0.5 * usage_rank + 0.5 * current.projected_usage_share
+    experience = (current.class_year.clip(1, 4) / 3).clip(0, 1).fillna(0)
+    proxy = 0.5 * pedigree + 0.5 * experience
+    current["production"] = np.where(played, current.production_pct,
+                                     np.where(current.group.isin(STAT_GROUPS), UNPROVEN_DISCOUNT * pedigree, proxy))
+    confidence = (usage / 0.20).clip(0, 1)
+    potential = np.maximum(current.production.fillna(0), UNPROVEN_DISCOUNT * pedigree)
+    opportunity_weight = ((1 - confidence) * current.opportunity_gain / 0.20).clip(0, 0.75)
+    current["production"] = (current.production.fillna(0) * (1 - opportunity_weight)
+                             + potential * opportunity_weight).clip(0, 1)
+    current["playing_time"] = np.where(played, projected_playing_time,
+                                       np.where(current.group.isin(STAT_GROUPS), UNPROVEN_DISCOUNT * pedigree, proxy))
+    current["pedigree"] = pedigree
+    current["experience"] = experience
+    current["value_index"] = sum(WEIGHTS[column] * current[column].fillna(0) for column in WEIGHTS).clip(0, 1)
+    current["position_multiplier"] = current.group.map(POSITION_MULTIPLIER).fillna(0.8) * (1 + current.position_growth)
+    current["season"] = SCORE_SEASON + 1
+    current = allocate(current, concentration)
+    current = current[(current.graduating == 0) & (current.seasons_left_est >= 1)].copy()
+    if {"athlete_id", "team", "production"}.issubset(scores.columns):
+        anchors = scores[scores.season == SCORE_SEASON][["athlete_id", "team", "nil_value", "production"]]
+        anchors = anchors.rename(columns={"nil_value": "current_nil_anchor", "production": "anchor_production"})
+        current = current.merge(anchors, on=["athlete_id", "team"], how="left", validate="one_to_one")
+    else:
+        current["current_nil_anchor"] = np.nan
+        current["anchor_production"] = np.nan
+    confidence = (current.usage_share.fillna(0).clip(0, 1) / 0.20).clip(0, 1)
+    current["performance_adjustment"] = (
+        0.4 * (current.production - current.anchor_production.fillna(current.production)) * confidence).clip(-0.20, 0.20)
+    current["opportunity_adjustment"] = (0.25 * current.opportunity_gain).clip(0, 0.25)
+    current["market_adjustment"] = (0.25 * current.budget_growth + 0.25 * current.position_growth).clip(-0.10, 0.10)
+    adjustment = (current.performance_adjustment + current.opportunity_adjustment + current.market_adjustment).clip(-0.25, 0.50)
+    anchored = current.current_nil_anchor * (1 + inflation_rate) * (1 + adjustment)
+    current["forecast_basis"] = np.where(current.current_nil_anchor > 0, "current NIL anchor", "allocation fallback")
+    current["inflation_rate"] = inflation_rate
+    current["nil_forecast"] = anchored.where(current.current_nil_anchor > 0, current.nil_value * (1 + inflation_rate)).round(-2)
+    current["return_probability"] = (1 - current.leave_prob).clip(0, 1)
+    current["expected_returning_nil"] = (current.nil_forecast * current.return_probability).round(-2)
+    current["nil_forecast_drivers"] = current.apply(
+        lambda row: f"{row.forecast_basis}; inflation {inflation_rate:.0%}; "
+                f"performance adjustment {row.performance_adjustment:+.0%}; opportunity adjustment {row.opportunity_adjustment:+.0%}; "
+                f"market adjustment {row.market_adjustment:+.0%}; "
+                f"Opportunity-adjusted production {row.production:.0%}; projected playing time {row.playing_time:.0%}; "
+                f"usage share {row.usage_share:.0%} -> {row.projected_usage_share:.0%}; "
+                f"vacated-role gain {row.opportunity_gain:.0%}; "
+                    f"{row.group} position multiplier {row.position_multiplier:.2f}; "
+                    f"budget trend {row.budget_growth:+.0%}; position trend {row.position_growth:+.0%}", axis=1)
+    return current[["athlete_id", "season", "team", "group", "nil_forecast", "return_probability",
+                    "expected_returning_nil", "projected_usage_share", "opportunity_gain",
+                    "current_nil_anchor", "inflation_rate", "performance_adjustment", "opportunity_adjustment",
+                    "market_adjustment", "forecast_basis",
+                    "nil_forecast_drivers"]].rename(columns={"season": "forecast_season"})
+
+
+def forecast_roster_costs(roster: pd.DataFrame, forecasts: pd.DataFrame, scores: pd.DataFrame,
+                          recruits: pd.DataFrame) -> pd.DataFrame:
+    keys = ["team", "group"]
+    returning = forecasts.groupby(keys).expected_returning_nil.sum().reset_index()
+    incoming = (recruits.dropna(subset=["committed_to"]).groupby(["committed_to", "group"])
+                .estimated_nil.sum(min_count=1).rename("incoming_nil").reset_index()
+                .rename(columns={"committed_to": "team"}))
+    current = scores[scores.season == SCORE_SEASON]
+    averages = current.groupby(keys).nil_value.mean().rename("avg_nil").reset_index()
+    team_average = current.groupby("team").nil_value.mean()
+    result = roster.merge(returning, on=keys, how="left").merge(incoming, on=keys, how="left").merge(averages, on=keys, how="left")
+    average = result.avg_nil.fillna(result.team.map(team_average))
+    baseline = average * result.projected_players
+    result["expected_returning_nil"] = result.expected_returning_nil.fillna(0).where(result.horizon == 1)
+    result["estimated_nil_cost"] = np.where(
+        result.horizon == 1,
+        result.expected_returning_nil + result.incoming_nil.fillna(average * result.incoming_recruits), baseline)
+    return result.drop(columns=["incoming_nil", "avg_nil"])
 
 
 def main() -> None:

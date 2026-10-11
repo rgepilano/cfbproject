@@ -14,6 +14,7 @@ const SORTS = {
   leave: "leave_risk DESC NULLS LAST",
   value: "player_value DESC NULLS LAST",
   nil: "nil_value DESC NULLS LAST",
+  forecast: "nil_forecast DESC NULLS LAST",
 } as const;
 type SortKey = keyof typeof SORTS;
 
@@ -39,7 +40,8 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
   const rows = await sql<Row>(
     `SELECT athlete_id, first_name, last_name, position, pos_group, class_year, seasons_left_est, graduating,
             player_value, transfer_risk, transfer_tier, transfer_drivers, nfl_risk, nfl_tier, nfl_drivers,
-            leave_risk, retention_priority, retention_rank, usage_share, production_pct, stars, nil_value, nil_drivers
+            leave_risk, retention_priority, retention_rank, usage_share, production_pct, stars, nil_value, nil_drivers,
+            forecast_season, nil_forecast, expected_returning_nil, nil_forecast_drivers
      FROM analytics.departure_risk
      WHERE team = $1 AND ($2::text IS NULL OR pos_group = $2)
      ORDER BY graduating, ${SORTS[sort]}`,
@@ -76,6 +78,8 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
               <Th>Player</Th><Th>Pos</Th><Th>Class</Th><Th>Seasons left</Th>
               <Th href={qs(base, { sort: "value" })} active={sort === "value"}>Value</Th>
               <Th href={qs(base, { sort: "nil" })} active={sort === "nil"}>Est. NIL</Th>
+              <Th href={qs(base, { sort: "forecast" })} active={sort === "forecast"}>{rows.find((r) => r.forecast_season)?.forecast_season ?? "Next season"} NIL estimate</Th>
+              <Th>Expected returning cost</Th>
               <Th href={qs(base, { sort: "transfer" })} active={sort === "transfer"}>Transfer</Th>
               <Th href={qs(base, { sort: "nfl" })} active={sort === "nfl"}>NFL</Th>
               <Th href={qs(base, { sort: "leave" })} active={sort === "leave"}>Leave</Th>
@@ -96,6 +100,8 @@ export default async function RetentionPage({ searchParams }: { searchParams: Se
                 <Td>{Number(r.graduating) === 1 ? "Final year" : num(r.seasons_left_est, 0)}</Td>
                 <Td>{pct(r.player_value)}</Td>
                 <Td><span title={String(r.nil_drivers ?? "")}>{money(r.nil_value)}</span></Td>
+                <Td><span title={String(r.nil_forecast_drivers ?? "")}>{money(r.nil_forecast)}</span></Td>
+                <Td>{money(r.expected_returning_nil)}</Td>
                 <Td>{r.transfer_tier ? <Badge>{r.transfer_tier}</Badge> : null} {num(r.transfer_risk, 0)}</Td>
                 <Td>{r.nfl_tier ? <Badge>{r.nfl_tier}</Badge> : "—"} {r.nfl_risk !== null ? num(r.nfl_risk, 0) : ""}</Td>
                 <Td>{num(r.leave_risk, 0)}</Td>

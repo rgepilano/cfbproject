@@ -97,6 +97,16 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         </Card>
       )}
 
+      {r?.nil_forecast != null && (
+        <Card title={`${r.forecast_season} NIL estimate`}>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+            <div className="text-2xl font-bold">{money(r.nil_forecast)}</div>
+            <div className="text-sm text-slate-500">Expected returning cost {money(r.expected_returning_nil)} · Return probability {pct(r.return_probability)}</div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{r.nil_forecast_drivers}</p>
+        </Card>
+      )}
+
       <Card title="Seasons">
         <Table>
           <thead>

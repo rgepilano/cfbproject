@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 // Only these tables can be exported; the name is never taken from user input directly.
 const TABLES = {
   departure_risk: { order: "team, retention_priority DESC", teamFilter: true },
+  player_nil_forecast: { order: "team, nil_forecast DESC", teamFilter: true },
   recruit_projection: { order: "success_score DESC", teamFilter: false },
   portal_candidate: { order: "quality DESC", teamFilter: false },
   roster_pipeline: { order: "team, horizon, pos_group", teamFilter: true },

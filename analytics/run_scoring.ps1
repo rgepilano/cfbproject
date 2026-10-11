@@ -8,7 +8,7 @@ Push-Location (Join-Path $root "analytics")
 try {
     # Python warnings go to stderr; don't let PowerShell 5.1 treat them as terminating errors.
     $ErrorActionPreference = "Continue"
-    & (Join-Path $root ".venv\Scripts\python.exe") score.py *>&1 | Tee-Object -FilePath $log
+    & (Join-Path $root ".venv\Scripts\python.exe") score.py --refresh-stats *>&1 | Tee-Object -FilePath $log
     if ($LASTEXITCODE -ne 0) { throw "score.py failed with exit code $LASTEXITCODE (see $log)" }
 } finally {
     Pop-Location
