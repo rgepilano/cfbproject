@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Badge, Card, Empty, Table, Td, Th } from "@/components/ui";
 import { WatchButton } from "@/components/Watchlist";
+import { PlayerBrief } from "@/components/PlayerBrief";
 import { getTeams, sql } from "@/lib/db";
 import { getPortalBoard } from "@/lib/portal";
 import { DEFAULT_TEAM, money, name, nilChange, num, pct } from "@/lib/util";
@@ -63,6 +64,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
           {" "}recruit {latest.recruit_year ?? "—"} ({num(latest.stars, 0)}★, {num(latest.rating, 4)})
         </p>
       </div>
+
+      <PlayerBrief key={`${id}:${defaultTeam}`} id={id} team={defaultTeam} />
 
       {r && (
         <div className="grid gap-4 md:grid-cols-4">
