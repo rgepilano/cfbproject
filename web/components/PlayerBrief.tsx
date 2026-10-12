@@ -36,12 +36,13 @@ export function PlayerBrief({ id, team }: { id: string; team: string }) {
       {result && (
         <div className="mt-4 space-y-3 text-sm" aria-live="polite">
           <p>{result.brief.assessment}</p>
-          <ul className="list-disc space-y-1 pl-5">{result.brief.evidence.map((item, index) => <li key={index}>{item}</li>)}</ul>
-          <div><h3 className="font-semibold">Team Fit</h3><p>{result.brief.fit}</p></div>
-          <div><h3 className="font-semibold">NIL Outlook</h3><p>{result.brief.nil}</p></div>
-          <div><h3 className="font-semibold">Uncertainties</h3>
+          <div><h3 className="font-semibold">Roster Context</h3>
+            <ul className="list-disc space-y-1 pl-5">{result.brief.evidence.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
+          <div><h3 className="font-semibold">Position-Room Outlook</h3><p>{result.brief.fit}</p></div>
+          <div><h3 className="font-semibold">NIL Planning</h3><p>{result.brief.nil}</p></div>
+          <div><h3 className="font-semibold">What To Verify</h3>
             <ul className="list-disc space-y-1 pl-5">{result.brief.uncertainties.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
-          <div><h3 className="font-semibold">Decision Considerations</h3>
+          <div><h3 className="font-semibold">Staff Priorities</h3>
             <ul className="list-disc space-y-1 pl-5">{result.brief.considerations.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
           <p className="text-xs text-slate-500">AI-generated · {new Date(result.generatedAt).toLocaleString()} · {result.cached ? "Saved brief" : "New brief"}</p>
         </div>
