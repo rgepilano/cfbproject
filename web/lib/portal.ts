@@ -53,6 +53,7 @@ export async function getPortalBoard(
   year?: string,
   latestYear?: string,
   athleteId?: string,
+  athleteIds: string[] = [],
 ): Promise<{ candidates: Candidate[]; hasLocation: boolean }> {
   if (!year || !latestYear) {
     latestYear = (await getPortalYears())[0];
@@ -91,6 +92,23 @@ export async function getPortalBoard(
              WHERE athlete_id = d.athlete_id AND source LIKE 'Watch%' ORDER BY candidate_id LIMIT 1
            ) pc ON true
            WHERE d.athlete_id = $1`, [athleteId],
+        )
+      : athleteIds.length > 0
+      ? sql<Raw>(
+          `SELECT d.athlete_id::text AS athlete_id, d.first_name, d.last_name, d.position, d.pos_group,
+                  d.team AS current_team, d.class_year, d.production_pct, d.usage_share,
+                  NULL::double precision AS portal_rating, d.stars AS portal_stars, d.transfer_risk,
+                  d.seasons_left_est, ps.home_state, coalesce(pc.quality, d.player_value) AS quality,
+                  coalesce(pc.eligibility_score, least(1.0, greatest(0.0, d.seasons_left_est / 4.0))) AS eligibility_score,
+                  d.nil_value, d.nil_forecast, d.forecast_season, d.nil_forecast_drivers,
+                  'Player lookup' AS source
+           FROM analytics.departure_risk d
+           LEFT JOIN analytics.player_season ps ON ps.athlete_id = d.athlete_id AND ps.season = d.season
+           LEFT JOIN LATERAL (
+             SELECT quality, eligibility_score FROM analytics.portal_candidate
+             WHERE athlete_id = d.athlete_id AND source LIKE 'Watch%' ORDER BY candidate_id LIMIT 1
+           ) pc ON true
+           WHERE d.athlete_id = ANY($1::bigint[])`, [athleteIds],
         )
       : year === latestYear
       ? sql<Raw>(

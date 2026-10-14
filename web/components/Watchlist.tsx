@@ -6,6 +6,7 @@ export type WatchItem = { key: string; kind: "player" | "recruit"; id: string; l
 
 // Storage key is namespaced per-user when available: `cfb_watchlist:<username>`
 let STORAGE_KEY = "cfb_watchlist";
+let watchlistReady = false;
 
 export function setWatchlistKeyForUser(username: string | null) {
   const oldKey = STORAGE_KEY;
@@ -26,6 +27,12 @@ export function setWatchlistKeyForUser(username: string | null) {
 }
 const listeners = new Set<() => void>();
 let cache: { raw: string | null; items: WatchItem[] } = { raw: null, items: [] };
+
+function markWatchlistReady() {
+  if (watchlistReady) return;
+  watchlistReady = true;
+  listeners.forEach((listener) => listener());
+}
 
 function read(): WatchItem[] {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -81,20 +88,25 @@ const EMPTY: WatchItem[] = [];
 
 export function useWatchlist() {
   const items = useSyncExternalStore(subscribe, read, () => EMPTY);
+  const ready = useSyncExternalStore(subscribe, () => watchlistReady, () => false);
   // Try to discover logged-in user and namespace the storage key accordingly.
   // This keeps existing behavior for anonymous users (shared local storage) but
   // switches to per-user keys when authenticated.
   // Run init as a side-effect to avoid doing async work during render.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   React.useEffect(() => {
     ReactTryInit();
   }, []);
   return {
     items,
+    ready,
     has: (key: string) => items.some((i) => i.key === key),
     toggle: (item: WatchItem) =>
       write(items.some((i) => i.key === item.key) ? items.filter((i) => i.key !== item.key) : [...items, item]),
     remove: (key: string) => write(items.filter((i) => i.key !== key)),
+    removeMany: (keys: string[]) => {
+      const removed = new Set(keys);
+      write(items.filter((item) => !removed.has(item.key)));
+    },
   };
 }
 
@@ -133,6 +145,8 @@ function ReactTryInit() {
       }
     } catch {
       // ignore
+    } finally {
+      markWatchlistReady();
     }
   })();
 }

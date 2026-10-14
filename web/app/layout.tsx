@@ -25,6 +25,7 @@ const NAV = [
   ["/retention", "Retention"],
   ["/recruits", "Recruits"],
   ["/portal", "Portal"],
+  ["/what-if", "What-if Board"],
   ["/watchlist", "Watchlist"],
   ["/models", "Models"],
 ];
@@ -37,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col bg-slate-50 dark:bg-slate-950">
         <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <nav className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
+          <nav className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3">
             <span className="font-bold">CFB Roster Pipeline</span>
             {NAV.map(([href, label]) => (
               <Link key={href} href={href} className="text-sm text-slate-600 hover:text-blue-600 dark:text-slate-300">
