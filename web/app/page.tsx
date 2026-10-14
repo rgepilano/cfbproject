@@ -1,15 +1,13 @@
 import Link from "next/link";
 import { ParamSelect } from "@/components/ParamSelect";
 import { Badge, Bar, Card, Empty, PlayerLink, Table, Td, Th } from "@/components/ui";
-import { getTeams, sql, getTeamNIL } from "@/lib/db";
-import { getPortalBoard } from "@/lib/portal";
+import { TeamBrief } from "@/components/TeamBrief";
+import { getTeams } from "@/lib/db";
+import { getDashboardData } from "@/lib/dashboard-data";
 import { DEFAULT_TEAM, money, name, num, param, pct, type SearchParams } from "@/lib/util";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, getSessionUsername } from "@/lib/session";
 import { getUserDefaultTeam } from "@/lib/users";
-
-type Need = { pos_group: string; need_score: number; player_gap: number; projected_players: number; target_players: number };
-type Row = Record<string, string | number | null>;
 
 export default async function Dashboard({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
@@ -25,27 +23,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
     : DEFAULT_TEAM;
   const q = `?team=${encodeURIComponent(team)}`;
 
-  const [needs, retain, commits, portal] = await Promise.all([
-    sql<Need>(
-      `SELECT pos_group, need_score, player_gap, projected_players, target_players
-       FROM analytics.roster_pipeline WHERE team = $1 AND horizon = 1 ORDER BY need_score DESC`,
-      [team],
-    ),
-    sql<Row>(
-      `SELECT athlete_id, first_name, last_name, pos_group, class_year, transfer_risk, transfer_tier, nfl_risk,
-              retention_priority, transfer_drivers, nil_value, nil_forecast, nil_forecast_drivers, forecast_season
-       FROM analytics.departure_risk WHERE team = $1 AND graduating = 0
-       ORDER BY retention_priority DESC NULLS LAST LIMIT 8`,
-      [team],
-    ),
-    sql<Row>(
-      `SELECT recruit_id, name, position, stars, success_score, tier, estimated_nil
-       FROM analytics.recruit_projection WHERE committed_to = $1 ORDER BY success_score DESC LIMIT 8`,
-      [team],
-    ),
-    getPortalBoard(team),
-  ]);
-  const nilVal = await getTeamNIL(team);
+  const { needs, retain, commits, portalCandidates, nilVal } = await getDashboardData(team);
 
   return (
     <>
@@ -56,6 +34,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
         </div>
         <ParamSelect name="team" value={team} options={teams} label="Team" />
       </div>
+
+      <TeamBrief team={team} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Positional need next season" action={<Link className="text-sm text-blue-600" href={`/pipeline${q}`}>Pipeline →</Link>}>
@@ -116,9 +96,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Search
 
         <Card title="Top portal fits" action={<Link className="text-sm text-blue-600" href={`/portal${q}`}>Portal board →</Link>}>
           <Table>
-            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>From</Th><Th>Quality</Th><Th>Need</Th><Th>Est. NIL</Th><Th>{portal.candidates.find((c) => c.forecast_season)?.forecast_season ?? "Next season"} NIL estimate</Th><Th>Score</Th></tr></thead>
+            <thead><tr><Th>Player</Th><Th>Pos</Th><Th>From</Th><Th>Quality</Th><Th>Need</Th><Th>Est. NIL</Th><Th>{portalCandidates.find((c) => c.forecast_season)?.forecast_season ?? "Next season"} NIL estimate</Th><Th>Score</Th></tr></thead>
             <tbody>
-              {portal.candidates.slice(0, 8).map((c) => (
+              {portalCandidates.map((c) => (
                 <tr key={c.candidate_id}>
                   <Td><PlayerLink id={c.athlete_id}>{name(c)}</PlayerLink></Td>
                   <Td>{c.pos_group}</Td><Td>{c.current_team}</Td>

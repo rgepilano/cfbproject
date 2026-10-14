@@ -65,7 +65,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         </p>
       </div>
 
-      <PlayerBrief key={`${id}:${defaultTeam}`} id={id} team={defaultTeam} />
+      <PlayerBrief key={`${id}:${defaultTeam}`} id={id} team={defaultTeam} playerTeam={String(r?.team ?? latest.team)} teams={teams} />
 
       {r && (
         <div className="grid gap-4 md:grid-cols-4">
@@ -133,7 +133,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         </Card>
       )}
 
-      <Card title="Seasons">
+      <div id="player-seasons"><Card title="Seasons">
         <Table>
           <thead>
             <tr><Th>Season</Th><Th>Team</Th><Th>Pos</Th><Th>Class</Th><Th>Usage share</Th><Th>Depth</Th><Th>Production pct</Th><Th>Est. NIL</Th><Th>Entered portal after</Th></tr>
@@ -149,7 +149,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
             ))}
           </tbody>
         </Table>
-      </Card>
+      </Card></div>
 
       <Card title="Portal history">
         {portal.length === 0 ? (
